@@ -16,7 +16,13 @@ from .rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
-RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+# 520-524 are Cloudflare's own error codes (not standard HTTP), seen
+# in practice from TPEx's OpenAPI (which sits behind Cloudflare) --
+# two real smoke-test runs failed on a 520 and on an HTML error page
+# served with a 200 status that broke JSON parsing. Both are the same
+# underlying problem: an intermittent edge/origin hiccup that a retry
+# clears, not a signal the endpoint itself is wrong.
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
 
 
 class HttpError(RuntimeError):
@@ -78,7 +84,20 @@ def _request_with_retry(url, *, params, headers, rate_limiter: RateLimiter, max_
         if resp.status_code >= 400:
             raise HttpError(f"HTTP {resp.status_code} from {url}: {resp.text[:300]}", resp.status_code)
 
-        return parse(resp)
+        try:
+            return parse(resp)
+        except ValueError as exc:
+            # e.g. json.JSONDecodeError (a ValueError subclass): a 200
+            # response whose body isn't what it claims to be -- seen in
+            # practice as a Cloudflare interstitial/error page served
+            # with a 200 status. Treat like any other transient failure
+            # rather than letting it crash the whole run uncaught.
+            last_exc = exc
+            logger.warning(
+                "response body didn't parse (attempt %d/%d) %s: %s", attempt, max_retries, url, exc
+            )
+            _backoff_sleep(attempt)
+            continue
 
     raise HttpError(f"Exhausted {max_retries} retries for {url}: {last_exc}")
 
