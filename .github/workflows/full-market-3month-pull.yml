@@ -8,12 +8,20 @@ name: Full-market 3-month pull (price + chip data, real network)
 # sample -- kept as its own workflow so it doesn't fire on every
 # routine scraper/** push.
 #
-# No FINMIND_TOKEN is configured, so this is running against FinMind's
-# free-tier hourly quota. If/when that's exhausted mid-run, jobs now
-# fail loudly (FinMindApiError, as of the commit that fixed silent
-# quota-exhaustion handling) and land in the checkpoint as `error`,
-# not falsely `done` -- so a follow-up `run` after the quota resets
-# will pick up exactly what's missing rather than needing to restart.
+# First run (no FINMIND_TOKEN) hit FinMind's anonymous free-tier
+# quota hard: only 972 of 9447 (ticker, dataset) jobs succeeded before
+# every subsequent request failed for the rest of the run. Those 8475
+# failures landed in the checkpoint as `error`, not falsely `done`
+# (the FinMindApiError fix), so they're safe to retry -- but doing
+# that needs FINMIND_TOKEN set (raises the quota to the account's
+# documented 600 req/hour) AND the checkpoint database carried over
+# from the previous run (see the restore step below), or every rerun
+# just re-attempts the same 9447 jobs from zero instead of targeting
+# the 8475 that actually failed.
+#
+# Uses secrets.FINMIND_TOKEN if the repo has it configured (Settings
+# -> Secrets and variables -> Actions -> New repository secret). Runs
+# fine without it too, just back at the low anonymous quota.
 #
 # Triggered the same way scraper-smoke-test.yml originally was:
 # workflow_dispatch needs this file merged to the default branch
@@ -29,8 +37,37 @@ jobs:
   full-pull:
     runs-on: ubuntu-latest
     timeout-minutes: 330
+    env:
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      # 600/hour per the account's documented limit -> 10/min. The
+      # first run used the old default (50/min, meant for the
+      # anonymous tier) and blew through the real budget in under two
+      # minutes, then failed for the remaining ~5+ hours -- this
+      # paces requests to actually match the quota instead of bursting
+      # into it.
+      FINMIND_RPM: "10"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Find previous run of this workflow (for resume)
+        id: prev_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh run list --workflow "full-market-3month-pull.yml" --status success \
+            --json databaseId --jq '.[0].databaseId' || true)
+          echo "Previous run id: ${RUN_ID:-none}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous run's database (resume support)
+        if: steps.prev_run.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: full-market-3month-db
+          path: scraper/data/
+          run-id: ${{ steps.prev_run.outputs.run_id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true # first-ever run (or artifact expired): fine, just starts fresh
 
       - uses: actions/setup-python@v5
         with:
@@ -46,11 +83,14 @@ jobs:
 
       - name: FinMind - queue price + chip datasets for every ticker
         working-directory: scraper
+        # Already-queued (ticker, dataset) pairs from a restored DB
+        # are left untouched by init_checkpoint_jobs -- this only adds
+        # rows for anything genuinely new (e.g. a newly listed ticker).
         run: >
           python run_batch_download.py queue --source finmind
           --datasets price institutional_investors margin_trading
 
-      - name: FinMind - run (last ~3 months, real API, can take hours)
+      - name: FinMind - run (targets only what's still pending/errored)
         working-directory: scraper
         run: python run_batch_download.py run --source finmind --start-date 2026-06-21
 

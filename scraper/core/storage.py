@@ -186,14 +186,21 @@ class Storage:
         self.conn.commit()
 
     def pending_jobs(self, source: str | None = None) -> list[tuple[str, str, str]]:
+        """Jobs still worth attempting: never-tried ('pending') and
+        previously-failed ('error') alike. A job stays 'error' forever
+        otherwise -- e.g. a quota-exhaustion failure would never get
+        retried on a later run even after the quota reset, which
+        defeats the whole point of checkpointing the failure instead
+        of just dropping it. No retry cap yet (the `attempts` column
+        is tracked for exactly that, if a caller wants to add one)."""
         if source:
             rows = self.conn.execute(
-                "SELECT ticker, dataset, source FROM checkpoint WHERE status='pending' AND source=? ORDER BY ticker",
+                "SELECT ticker, dataset, source FROM checkpoint WHERE status IN ('pending', 'error') AND source=? ORDER BY ticker",
                 (source,),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT ticker, dataset, source FROM checkpoint WHERE status='pending' ORDER BY ticker"
+                "SELECT ticker, dataset, source FROM checkpoint WHERE status IN ('pending', 'error') ORDER BY ticker"
             ).fetchall()
         return [(r["ticker"], r["dataset"], r["source"]) for r in rows]
 

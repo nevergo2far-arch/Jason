@@ -151,6 +151,18 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(row["attempts"], 1)
         self.assertEqual(row["last_error"], "boom")
 
+        # The actual "then_retry": a later run's pending_jobs() must
+        # surface this errored job again, or a transient failure (e.g.
+        # a quota outage) would be stuck forever even after whatever
+        # caused it clears up. Regression test for a real bug: an
+        # earlier version of pending_jobs() only selected
+        # status='pending', so no error job was ever retried.
+        retried = self.storage.pending_jobs(source="finmind")
+        self.assertEqual(retried, [("2330", "dividend", "finmind")])
+
+        self.storage.mark_checkpoint("2330", "dividend", "finmind", "done")
+        self.assertEqual(self.storage.pending_jobs(source="finmind"), [])
+
     def test_export_ticker_writes_json_and_csv(self):
         self.storage.upsert_stock("2330", "台積電", "TWSE", "半導體業", "twse")
         self.storage.save_record("finmind", "monthly_revenue", "2330", "2024-01", {"revenue_year": 2024, "revenue_month": 1, "revenue": 100})
