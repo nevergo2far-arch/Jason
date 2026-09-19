@@ -93,6 +93,22 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(row["name"], "台積電")
         self.assertEqual(len(self.storage.list_tickers()), 1)
 
+    def test_export_all_includes_tickers_not_in_stocks_table(self):
+        # Regression test: a market-wide source can return tickers
+        # (warrants, ETF share classes, ...) that were never in the
+        # stocks table via upsert_stock/stock-list. export_all() must
+        # still export their data, not silently drop it.
+        self.storage.upsert_stock("2330", "台積電", "TWSE", "半導體業", "twse")
+        self.storage.save_record("twse_openapi", "twse_stock_day_all", "2330", "2026-09-18", {"Code": "2330"})
+        self.storage.save_record("twse_openapi", "tpex_stock_day_all", "006201", "2026-09-18", {"Code": "006201"})
+        self.storage.conn.commit()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            export_dir = Path(tmp)
+            result = self.storage.export_all(export_dir)
+            self.assertIn("006201", result)
+            self.assertTrue((export_dir / "006201" / "tpex_stock_day_all.json").exists())
+
     def test_save_and_get_records_roundtrip(self):
         self.storage.save_record("finmind", "monthly_revenue", "2330", "2024-01", {"revenue": 100})
         self.storage.save_record("finmind", "monthly_revenue", "2330", "2024-02", {"revenue": 120})

@@ -97,6 +97,17 @@ class Storage:
         rows = self.conn.execute("SELECT ticker FROM stocks ORDER BY ticker").fetchall()
         return [r["ticker"] for r in rows]
 
+    def list_tickers_with_data(self) -> list[str]:
+        """Every ticker that actually has at least one raw_records row,
+        which is not the same set as list_tickers(): market-wide
+        sources like TPEx's daily-quotes endpoint return codes (ETFs,
+        warrants, preferred-share classes) that FinMind's TaiwanStockInfo
+        never listed, so they'd otherwise be silently dropped from
+        export_all() despite being in the manifest export_all() feeds
+        into build_manifest()."""
+        rows = self.conn.execute("SELECT DISTINCT ticker FROM raw_records ORDER BY ticker").fetchall()
+        return [r["ticker"] for r in rows]
+
     # -- raw records --------------------------------------------------
     def save_record(self, source: str, dataset: str, ticker: str, record_date: str, payload: dict[str, Any]) -> None:
         self.conn.execute(
@@ -208,7 +219,7 @@ class Storage:
 
     def export_all(self, export_dir: Path) -> dict[str, dict[str, int]]:
         result = {}
-        for ticker in self.list_tickers():
+        for ticker in self.list_tickers_with_data():
             result[ticker] = self.export_ticker(ticker, export_dir)
         return result
 
