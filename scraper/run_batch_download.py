@@ -105,7 +105,7 @@ def cmd_run(storage: Storage, args) -> None:
 
     if args.source == "finmind":
         client = FinMindClient(CONFIG.finmind)
-        _run_finmind(storage, client, pending)
+        _run_finmind(storage, client, pending, start_date=args.start_date)
     elif args.source == "goodinfo":
         client = GoodinfoClient(CONFIG.goodinfo)
         if not CONFIG.goodinfo.enabled:
@@ -118,7 +118,7 @@ def cmd_run(storage: Storage, args) -> None:
         raise SystemExit(f"--source {args.source} not supported by `run`.")
 
 
-def _run_finmind(storage: Storage, client: FinMindClient, jobs: list[tuple[str, str, str]]) -> None:
+def _run_finmind(storage: Storage, client: FinMindClient, jobs: list[tuple[str, str, str]], start_date: str) -> None:
     method_by_dataset = {
         "cash_flow_statement": client.cash_flow_statement,
         "income_statement": client.income_statement,
@@ -126,11 +126,13 @@ def _run_finmind(storage: Storage, client: FinMindClient, jobs: list[tuple[str, 
         "monthly_revenue": client.monthly_revenue,
         "dividend": client.dividend,
         "price": client.price,
+        "institutional_investors": client.institutional_investors,
+        "margin_trading": client.margin_trading,
     }
     done = errored = 0
     for ticker, dataset, source in jobs:
         try:
-            pairs = method_by_dataset[dataset](ticker)
+            pairs = method_by_dataset[dataset](ticker, start_date)
             for record_date, payload in pairs:
                 storage.save_record(source, dataset, ticker, record_date, payload)
             storage.conn.commit()
@@ -240,6 +242,11 @@ def main() -> None:
 
     p_run = sub.add_parser("run", help="Process pending jobs for one source.")
     p_run.add_argument("--source", choices=["finmind", "goodinfo"], required=True)
+    p_run.add_argument(
+        "--start-date", default="2000-01-01",
+        help="FinMind only: earliest date to fetch per dataset (YYYY-MM-DD). Default pulls full history; "
+        "pass e.g. today-3-months for a smaller/faster run.",
+    )
 
     p_market = sub.add_parser(
         "market-wide", help="Fetch whole-market TWSE/TPEx OpenAPI endpoints (one call each, no per-ticker looping)."
@@ -249,6 +256,7 @@ def main() -> None:
     sub.add_parser("export", help="Export the SQLite DB to per-ticker JSON/CSV + a manifest.")
 
     p_all = sub.add_parser("all", help="stock-list + queue(finmind, all datasets, full market) + run + export.")
+    p_all.add_argument("--start-date", default="2000-01-01", help="Same as `run --start-date`.")
 
     args = parser.parse_args()
 

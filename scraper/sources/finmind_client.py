@@ -31,6 +31,13 @@ _LONG_FORMAT_DATASETS = {
     "TaiwanStockCashFlowsStatement",
 }
 
+# Institutional buy/sell is also long-format, but discriminated by
+# `name` (the investor category: 外資, 投信, 自營商自行, ...) rather
+# than `type` -- one row per (date, investor category).
+_LONG_FORMAT_BY_NAME_DATASETS = {
+    "TaiwanStockInstitutionalInvestorsBuySell",
+}
+
 
 class FinMindClient:
     def __init__(self, config):
@@ -75,6 +82,8 @@ class FinMindClient:
         for rec in records:
             if dataset in _LONG_FORMAT_DATASETS:
                 key = f"{rec.get('date')}|{rec.get('type')}"
+            elif dataset in _LONG_FORMAT_BY_NAME_DATASETS:
+                key = f"{rec.get('date')}|{rec.get('name')}"
             elif dataset == "TaiwanStockMonthRevenue":
                 key = f"{rec.get('revenue_year')}-{int(rec.get('revenue_month', 0)):02d}"
             else:
@@ -103,6 +112,15 @@ class FinMindClient:
     def price(self, ticker: str, start_date: str = "2000-01-01"):
         return self.fetch_dataset_for_ticker("TaiwanStockPrice", ticker, start_date)
 
+    # -- 籌碼面 (chip/institutional-flow) datasets --------------------------
+    def institutional_investors(self, ticker: str, start_date: str = "2000-01-01"):
+        """三大法人（外資/投信/自營商）買賣超, one row per (date, category)."""
+        return self.fetch_dataset_for_ticker("TaiwanStockInstitutionalInvestorsBuySell", ticker, start_date)
+
+    def margin_trading(self, ticker: str, start_date: str = "2000-01-01"):
+        """融資融券餘額, one row per date."""
+        return self.fetch_dataset_for_ticker("TaiwanStockMarginPurchaseShortSale", ticker, start_date)
+
 
 # dataset key -> FinMind client method name, used by the batch runner
 # to build its job matrix generically.
@@ -113,4 +131,6 @@ FINMIND_DATASETS: dict[str, str] = {
     "monthly_revenue": "monthly_revenue",
     "dividend": "dividend",
     "price": "price",
+    "institutional_investors": "institutional_investors",
+    "margin_trading": "margin_trading",
 }

@@ -81,6 +81,19 @@ python run_batch_download.py run --source finmind
 python run_batch_download.py export
 ```
 
+### 只抓近期一段時間（技術面／籌碼面分析常用）
+
+`price`／`institutional_investors`／`margin_trading` 這幾個資料集預設會抓 FinMind 有的全部歷史（`start_date` 預設 `2000-01-01`），全市場全歷史資料量非常大也很慢。只要近 N 個月，用 `run --start-date` 縮小區間即可（`queue` 不用重新下，同一批 job 用不同 start_date 重新 `run` 也可以）：
+
+```bash
+python run_batch_download.py stock-list
+python run_batch_download.py queue --source finmind --datasets price institutional_investors margin_trading
+python run_batch_download.py run --source finmind --start-date 2026-06-19   # 近 3 個月
+python run_batch_download.py export
+```
+
+**注意**：`--start-date` 只影響 FinMind 資料集，對 `market-wide`（TWSE/TPEx OpenAPI）沒有作用——那幾個 endpoint 本身就只回傳「最新一個交易日」，沒有查歷史區間的參數，想要逐日累積歷史，需要每天另外跑一次 `market-wide` 自行累積。
+
 ### 中斷後續傳
 
 批次下載中途 Ctrl-C 沒關係，已完成的 (股票, 資料集) 組合已經記錄在 `checkpoint` 表裡；直接重新執行 `run --source finmind` 就會跳過已完成的，只補沒做完的部分。想看目前進度：
@@ -160,7 +173,9 @@ result = client.fetch_financial_statement_detail("2330", "2024", "4")
 | `balance_sheet` | E（期末現金餘額）之交叉驗證 | `type` 含 `CashAndCashEquivalents` 等 |
 | `monthly_revenue` | 第四步月營收趨勢 | `revenue`、`revenue_year`、`revenue_month`、年增率相關欄位 |
 | `dividend` | 殖利率相關基本資訊 | `CashEarningsDistribution`、`StockEarningsDistribution`、公告/除權息日期 |
-| `price` | 股價（52週高低等） | `open/max/min/close/Trading_Volume` |
+| `price` | 股價（52週高低等）、技術面時間序列 | `open/max/min/close/Trading_Volume`，每個 (ticker, date) 一筆，可用 `--start-date` 取一段區間 |
+| `institutional_investors` | 籌碼面：三大法人買賣超 | `name`（`Foreign_Investor`/`Investment_Trust`/`Dealer_*` 等分類）＋ `buy`/`sell`；長格式，每個 (date, name) 一筆 |
+| `margin_trading` | 籌碼面：融資融券餘額 | `MarginPurchaseTodayBalance`、`ShortSaleTodayBalance` 等，每個 (ticker, date) 一筆 |
 
 **注意**：`cash_flow_statement`／`income_statement`／`balance_sheet` 是「長格式」（一個日期會展開成多筆，每筆對應一個 `type` 線項），不是每個日期一列多欄；另一位 AI 分析員在彙總 A/B/C/D/E 時要先依 `type` 篩選、依 `date` 分組加總，不能直接把整份 JSON 陣列的 `value` 加總。`type` 的確切字串需對照 FinMind 目前文件核實（不同版本 API 曾經調整過命名）。
 
