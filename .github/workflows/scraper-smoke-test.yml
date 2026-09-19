@@ -70,6 +70,26 @@ jobs:
           echo "----- 2330's cash_flow_statement.json (first 40 lines) -----"
           head -n 40 data/exports/2330/cash_flow_statement.json || echo "(no cash flow records for 2330 - real problem, dataset name may be wrong)"
 
+      - name: TWSE OpenAPI - discover the real monthly-revenue endpoint
+        working-directory: scraper
+        # Diagnostic only, to correct ENDPOINTS in twse_openapi_client.py
+        # once and then be deleted -- not meant to stay in this workflow.
+        # The first live run showed t187ap03_L returns company basic
+        # info (公司名稱/董事長/...), not monthly revenue, so the
+        # dataset code guess was wrong; searching the exchange's own
+        # swagger spec for "營收" finds the real one.
+        run: |
+          curl -sS https://openapi.twse.com.tw/v1/swagger.json -o /tmp/twse_swagger.json
+          python3 -c "
+          import json
+          spec = json.load(open('/tmp/twse_swagger.json'))
+          for path, methods in spec.get('paths', {}).items():
+              for info in methods.values():
+                  text = (info.get('summary','') + ' ' + info.get('description','') + ' ' + info.get('operationId',''))
+                  if '營收' in text or 'revenue' in text.lower() or 'Revenue' in text:
+                      print(path, '->', info.get('summary'), '|', info.get('operationId'))
+          "
+
       - name: TWSE/TPEx OpenAPI - probe each known endpoint (real API)
         working-directory: scraper
         run: |

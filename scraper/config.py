@@ -59,8 +59,15 @@ class FinMindConfig:
 class TwseOpenApiConfig:
     # Official, unauthenticated, no ToS restriction on automated
     # access for these open-data endpoints.
-    twse_base_url: str = "https://openapi.twse.com.tw/v1"
-    tpex_base_url: str = "https://www.tpex.org.tw/openapi/v1"
+    # Note: no "/v1" suffix here — ENDPOINTS paths in
+    # sources/twse_openapi_client.py already include it. A live smoke
+    # test (GitHub Actions, this sandbox has no internet) caught that
+    # having it in both places silently worked for TWSE (their server
+    # redirects /v1/v1/... -> /v1/...) but hard-failed for TPEx
+    # (HTTP 520 on the literal doubled path) — so this is the one
+    # form that's confirmed correct for both.
+    twse_base_url: str = "https://openapi.twse.com.tw"
+    tpex_base_url: str = "https://www.tpex.org.tw/openapi"
     requests_per_minute: float = _env_float("TWSE_OPENAPI_RPM", 30)
     max_retries: int = _env_int("TWSE_OPENAPI_MAX_RETRIES", 4)
     timeout_seconds: float = _env_float("TWSE_OPENAPI_TIMEOUT", 20)
