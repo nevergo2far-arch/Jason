@@ -60,33 +60,26 @@ jobs:
         working-directory: scraper
         run: python run_batch_download.py run --source finmind
 
-      - name: FinMind - export and print results
+      - name: TWSE/TPEx - market-wide daily data (real API, all listed tickers)
+        working-directory: scraper
+        run: python run_batch_download.py market-wide
+
+      - name: Export and print results
         working-directory: scraper
         run: |
           python run_batch_download.py export
-          echo "----- index.json -----"
-          cat data/exports/index.json
+          echo "----- index.json (2330 entry only) -----"
+          python -c "
+          import json
+          idx = json.load(open('data/exports/index.json'))
+          print(json.dumps(idx['tickers'].get('2330'), ensure_ascii=False, indent=2))
+          "
           echo
           echo "----- 2330's cash_flow_statement.json (first 40 lines) -----"
           head -n 40 data/exports/2330/cash_flow_statement.json || echo "(no cash flow records for 2330 - real problem, dataset name may be wrong)"
-
-      - name: TWSE/TPEx OpenAPI - probe each known endpoint (real API)
-        working-directory: scraper
-        run: |
-          python - <<'PY'
-          import sys
-          sys.path.insert(0, ".")
-          from config import CONFIG
-          from sources.twse_openapi_client import ENDPOINTS, TwseOpenApiClient
-
-          client = TwseOpenApiClient(CONFIG.twse_openapi)
-          for key in ENDPOINTS:
-              try:
-                  data = client.fetch(key)
-                  print(f"OK   {key}: {len(data)} rows, sample keys={list(data[0].keys()) if data else '(empty)'}")
-              except Exception as exc:
-                  print(f"FAIL {key}: {exc}")
-          PY
+          echo
+          echo "----- 2330's twse_stock_day_all.json (whole-market daily price) -----"
+          cat data/exports/2330/twse_stock_day_all.json || echo "(no market-wide record for 2330)"
 
       - name: MOPS - robots.txt check only (no data request)
         working-directory: scraper
