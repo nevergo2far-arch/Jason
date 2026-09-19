@@ -1,17 +1,27 @@
 name: Scraper smoke test (real network)
 
-# Manual only — this hits real external APIs (FinMind, TWSE/TPEx open
-# data), so it shouldn't run on every push. GitHub-hosted runners have
-# normal internet egress, unlike the sandbox this code was originally
-# written in, which is the whole point of running it here: it's the
-# first real check of whether the dataset names / endpoint paths in
-# sources/finmind_client.py and sources/twse_openapi_client.py are
-# actually correct.
+# Hits real external APIs (FinMind, TWSE/TPEx open data). GitHub-hosted
+# runners have normal internet egress, unlike the sandbox this code was
+# originally written in, which is the whole point of running it here:
+# it's the first real check of whether the dataset names / endpoint
+# paths in sources/finmind_client.py and sources/twse_openapi_client.py
+# are actually correct.
+#
+# workflow_dispatch alone would need this file merged to the default
+# branch first (GitHub only allows manually dispatching workflows that
+# already exist there), so pull_request is the trigger that actually
+# works pre-merge — scoped to changes under scraper/ or this file so it
+# doesn't run on unrelated pushes. workflow_dispatch stays too, for
+# manual reruns once this is on the default branch.
 #
 # Deliberately does NOT touch Goodinfo — that client stays opt-in and
 # untouched by CI; enabling it is a human decision, not something a
 # workflow should do on its own.
 on:
+  pull_request:
+    paths:
+      - "scraper/**"
+      - ".github/workflows/scraper-smoke-test.yml"
   workflow_dispatch:
 
 jobs:
