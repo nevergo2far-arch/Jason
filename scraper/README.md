@@ -17,13 +17,27 @@
 
 ---
 
-## 環境限制說明（重要）
+## 環境限制說明 / 實測結果
 
-這套程式碼是在一個**完全沒有一般網路對外連線**的沙盒環境裡開發的（只白名單 npm/pypi/GitHub 等套件庫，`goodinfo.tw`、`finmindtrade.com`、`openapi.twse.com.tw` 等網域全部連不到）。也就是說：
+這套程式碼原本是在一個**完全沒有一般網路對外連線**的沙盒環境裡開發的，所以最早一版沒辦法直接打真實 API 驗證。後來用 `.github/workflows/scraper-smoke-test.yml`（PR 一有 `scraper/**` 的變更就會自動跑，GitHub-hosted runner 有正常對外連線）實際打過真實 API，結果：
 
-- 所有「不需要網路」的部分（SQLite 儲存、checkpoint/resume、JSON/CSV 匯出、rate limiter、robots.txt 判斷邏輯）都已經用 14 個單元測試在本機驗證過（`tests/test_core.py`，全數通過），可以直接信任。
-- 所有**需要真的打 API** 的部分（FinMind 的 dataset 名稱、TWSE/TPEx OpenAPI 的確切路徑、MOPS 的查詢 CGI 路徑）是依訓練資料裡的公開文件寫的，**沒有辦法在這個環境裡實際打一次驗證**。請在你自己有網路的環境**先用 `--limit 3` 之類的小範圍跑一次**，確認資料抓得到、格式對，再放大到全市場。
-- 尤其 `sources/twse_openapi_client.py` 裡的 `ENDPOINTS` 字典、`sources/mops_client.py` 裡的 `QUERY_PATH`，程式碼註解都明確標記「VERIFY」——這兩個來源沒有像 FinMind 那樣穩定的官方 SDK，網址結構比較容易隨時間改版，用之前務必對照官方文件（`https://openapi.twse.com.tw/`、`https://www.tpex.org.tw/openapi/`）確認一次。
+| 項目 | 結果 |
+|---|---|
+| FinMind `TaiwanStockInfo`（股票清單） | ✅ 真實跑過，3149 檔上市+上櫃股票 |
+| FinMind `TaiwanStockCashFlowsStatement`（現金流量表） | ✅ 真實跑過，2330/2454/2317 各上千筆真實資料 |
+| FinMind `TaiwanStockMonthRevenue`（月營收） | ✅ 真實跑過，296 筆/檔 |
+| TWSE OpenAPI `STOCK_DAY_ALL`（全市場日成交資訊） | ✅ 真實跑過，1377 檔 |
+| TWSE OpenAPI `t187ap45_L`（股利分派情形） | ✅ 真實跑過，1226 筆 |
+| TPEx OpenAPI `tpex_mainboard_daily_close_quotes`（上櫃日成交） | ✅ 真實跑過，11481 筆 |
+| ~~TWSE/TPEx 月營收 OpenAPI~~ | ❌ 移除。實測發現兩個交易所的開放資料平台都**沒有**單純「每檔公司月營收」這種格式的 endpoint（猜測的 dataset code 打中的其實是公司基本資料表，不是月營收）；月營收一律用 FinMind 取得，程式碼已同步調整、不再猜測不存在的 endpoint |
+| MOPS `/ajax_t05st03` | ⚠️ 只驗證了 robots.txt 判斷邏輯本身正確，實測發現 mopsov.twse.com.tw 的 robots.txt **確實擋掉**這個猜測路徑——`MopsClient` 因此會如預期拒絕請求（fail closed 生效），但真正該打哪個路徑仍未確認 |
+| Goodinfo | 未測試（刻意跳過，見上方說明） |
+
+實測過程中也修正了兩個原本猜錯的地方：TWSE/TPEx OpenAPI 的 base URL 原本重複了一次 `/v1`（TWSE 剛好被伺服器重導向蓋過去沒發現，TPEx 會直接 520 錯誤）；以及上面提到的月營收 endpoint 誤判。
+
+`sources/mops_client.py` 的 `QUERY_PATH` 目前**確認會被 robots.txt 擋下**，也就是說用預設設定執行 MOPS 細項查詢會直接被跳過、不會真的送出請求——這符合本專案「不確定就不硬闖」的設計，但也代表這個路徑本身需要重新找一個 robots.txt 允許的正確查詢方式才有實際用途，目前只是安全地什麼都不做。
+
+想重跑這個驗證（例如之後 FinMind/TWSE 改版），到 GitHub 的 Actions 分頁手動觸發 `Scraper smoke test (real network)`，或對這個 PR 的 `scraper/**` 路徑推新的 commit 就會自動跑一次。
 
 ---
 
@@ -154,7 +168,7 @@ result = client.fetch_financial_statement_detail("2330", "2024", "4")
 
 ## 已知限制 / 待辦
 
-- TWSE/TPEx OpenAPI 與 MOPS 的端點路徑未經實際網路驗證，見上方「環境限制說明」。
+- MOPS 的細項查詢端點目前確認會被 robots.txt 擋下（因此不會實際送出請求），還沒找到 robots.txt 允許的正確查詢路徑，見上方「環境限制說明 / 實測結果」。
 - Goodinfo client 只存原始 HTML，未寫解析器。
 - 未處理股票分割／減資造成的每股數字基期不一致問題（`SKILL.md` 裡對此有詳細規則，若要讓下游 AI 分析員自動判斷，需要額外寫檢查邏輯，目前留給分析階段人工/AI 判斷）。
 - 沒有寫排程（cron／Airflow 之類），如需要定期自動更新，需自行外掛排程工具呼叫 `run_batch_download.py all`。

@@ -7,13 +7,19 @@ consumption. They're also efficient for a whole-market batch job —
 most endpoints return every listed company's row for a given report
 in a single call, instead of one call per ticker.
 
-IMPORTANT — endpoint paths below could not be verified from this
-sandbox (no general internet egress here; see scraper/README.md).
-Before relying on this client, open https://openapi.twse.com.tw/
-(Swagger UI) and https://www.tpex.org.tw/openapi/ and confirm each
-path in ENDPOINTS still matches; update the dict if the exchange has
-renamed/moved one. Treat every entry's comment as "last known, not
-guaranteed current."
+Each entry below was verified against a real request in GitHub Actions
+(this sandbox has no internet egress to do that itself — see
+scraper/README.md). Swagger specs, for re-checking if an exchange
+renames/moves something later: https://openapi.twse.com.tw/v1/swagger.json
+and https://www.tpex.org.tw/openapi/swagger.json (note: no "/v1" in the
+TPEx one, unlike its data paths below).
+
+There is deliberately no "monthly revenue" entry here: neither
+exchange's open-data portal has a plain per-company monthly-revenue
+endpoint (TPEx has aggregate/derived tables like
+/mopsfin_t187ap05_OA "二十九大類股營收變化統計表", but nothing
+matching finmind_client.py's per-ticker TaiwanStockMonthRevenue
+shape). Get monthly revenue from FinMind, which does cover it.
 """
 from __future__ import annotations
 
@@ -25,14 +31,12 @@ from core.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
-# path -> (exchange, human description). VERIFY against Swagger docs
-# before depending on these in production use.
+# path -> (exchange, human description). Verified working (see module
+# docstring); re-verify if one starts returning unexpected data.
 ENDPOINTS: dict[str, tuple[str, str]] = {
     "twse_stock_day_all": ("twse", "/v1/exchangeReport/STOCK_DAY_ALL"),  # all-listed daily OHLC
-    "twse_monthly_revenue": ("twse", "/v1/opendata/t187ap03_L"),  # 上市公司每月營收彙總表
     "twse_dividend": ("twse", "/v1/opendata/t187ap45_L"),  # 上市公司股利分派情形
     "tpex_stock_day_all": ("tpex", "/v1/tpex_mainboard_daily_close_quotes"),  # OTC daily quotes
-    "tpex_monthly_revenue": ("tpex", "/v1/opendata/t187ap03_O"),  # 上櫃公司每月營收彙總表
 }
 
 

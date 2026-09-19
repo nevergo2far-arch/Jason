@@ -70,50 +70,6 @@ jobs:
           echo "----- 2330's cash_flow_statement.json (first 40 lines) -----"
           head -n 40 data/exports/2330/cash_flow_statement.json || echo "(no cash flow records for 2330 - real problem, dataset name may be wrong)"
 
-      - name: TWSE/TPEx OpenAPI - discover the real monthly-revenue endpoints
-        working-directory: scraper
-        # Diagnostic only, to correct ENDPOINTS in twse_openapi_client.py
-        # once and then be deleted -- not meant to stay in this workflow.
-        # The first swagger.json guess (v1/swagger.json) returned no
-        # matches at all (probably 404'd into an empty/error body that
-        # happened to parse as JSON with no "paths" key, so the loop
-        # silently found nothing) -- try several known candidate spec
-        # URLs and report what each one actually contains.
-        run: |
-          python3 -c "
-          import json, urllib.request
-
-          candidates = [
-              'https://openapi.twse.com.tw/v1/swagger.json',
-              'https://openapi.twse.com.tw/swagger.json',
-              'https://openapi.twse.com.tw/api-docs',
-              'https://openapi.twse.com.tw/v1/api-docs',
-              'https://www.tpex.org.tw/openapi/swagger.json',
-              'https://www.tpex.org.tw/openapi/v1/swagger.json',
-          ]
-          for url in candidates:
-              try:
-                  req = urllib.request.Request(url, headers={'User-Agent': 'tw-stock-research-bot/1.0'})
-                  with urllib.request.urlopen(req, timeout=15) as resp:
-                      status = resp.status
-                      body = resp.read()
-              except Exception as exc:
-                  print(f'{url} -> request failed: {exc}')
-                  continue
-              try:
-                  spec = json.loads(body)
-              except Exception:
-                  print(f'{url} -> HTTP {status}, {len(body)} bytes, NOT JSON (first 100 chars: {body[:100]!r})')
-                  continue
-              paths = spec.get('paths', {})
-              print(f'{url} -> HTTP {status}, JSON with {len(paths)} paths')
-              for path, methods in paths.items():
-                  for info in methods.values():
-                      text = (info.get('summary','') + ' ' + info.get('description','') + ' ' + info.get('operationId',''))
-                      if '營收' in text or 'revenue' in text.lower():
-                          print(f'    MATCH {path} -> {info.get(\"summary\")} | {info.get(\"operationId\")}')
-          "
-
       - name: TWSE/TPEx OpenAPI - probe each known endpoint (real API)
         working-directory: scraper
         run: |
