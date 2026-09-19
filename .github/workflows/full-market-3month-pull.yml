@@ -1,0 +1,88 @@
+name: Full-market 3-month pull (price + chip data, real network)
+
+# One-off large pull: every TWSE+TPEx ticker's price, institutional
+# buy/sell, and margin trading for the last ~3 months, plus a
+# whole-market snapshot from TWSE/TPEx OpenAPI, for technical +
+# chip-flow (籌碼面) analysis. This is a multi-thousand-ticker job that
+# can run for hours, unlike scraper-smoke-test.yml's small fixed
+# sample -- kept as its own workflow so it doesn't fire on every
+# routine scraper/** push.
+#
+# No FINMIND_TOKEN is configured, so this is running against FinMind's
+# free-tier hourly quota. If/when that's exhausted mid-run, jobs now
+# fail loudly (FinMindApiError, as of the commit that fixed silent
+# quota-exhaustion handling) and land in the checkpoint as `error`,
+# not falsely `done` -- so a follow-up `run` after the quota resets
+# will pick up exactly what's missing rather than needing to restart.
+#
+# Triggered the same way scraper-smoke-test.yml originally was:
+# workflow_dispatch needs this file merged to the default branch
+# first, so pull_request (scoped to this file) is what actually fires
+# pre-merge.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/full-market-3month-pull.yml"
+  workflow_dispatch:
+
+jobs:
+  full-pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: pip install -r requirements.txt
+
+      - name: FinMind - fetch full TWSE+TPEx ticker universe
+        working-directory: scraper
+        run: python run_batch_download.py stock-list
+
+      - name: FinMind - queue price + chip datasets for every ticker
+        working-directory: scraper
+        run: >
+          python run_batch_download.py queue --source finmind
+          --datasets price institutional_investors margin_trading
+
+      - name: FinMind - run (last ~3 months, real API, can take hours)
+        working-directory: scraper
+        run: python run_batch_download.py run --source finmind --start-date 2026-06-21
+
+      - name: TWSE/TPEx - market-wide snapshot (real API)
+        working-directory: scraper
+        run: python run_batch_download.py market-wide
+
+      - name: Export
+        working-directory: scraper
+        run: |
+          python run_batch_download.py export
+          echo "----- checkpoint summary -----"
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from config import CONFIG
+          from core.storage import Storage
+          with Storage(CONFIG.db_path) as s:
+              print(s.checkpoint_summary())
+          "
+
+      - name: Upload exported data as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-market-3month-output
+          path: scraper/data/exports/
+          if-no-files-found: warn
+
+      - name: Upload SQLite DB as artifact (source of truth, for resuming)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-market-3month-db
+          path: scraper/data/tw_stock_data.db
+          if-no-files-found: warn
