@@ -39,6 +39,47 @@ ENDPOINTS: dict[str, tuple[str, str]] = {
     "tpex_stock_day_all": ("tpex", "/v1/tpex_mainboard_daily_close_quotes"),  # OTC daily quotes
 }
 
+# How to decompose each endpoint's whole-market response into
+# per-ticker raw_records rows: which field is the ticker code, and
+# which field is the natural date key for de-dup. STOCK_DAY_ALL-style
+# endpoints return whatever the most recent trading day is -- there is
+# no date parameter to request an older day from these particular
+# endpoints. date_field=None means the row has no single clean date
+# column; the caller builds a composite key instead (see
+# run_batch_download.py's market-wide command).
+FIELD_MAP: dict[str, dict[str, str | None]] = {
+    "twse_stock_day_all": {"ticker_field": "Code", "date_field": "Date"},
+    "tpex_stock_day_all": {"ticker_field": "SecuritiesCompanyCode", "date_field": "Date"},
+    "twse_dividend": {"ticker_field": "公司代號", "date_field": None},
+}
+
+
+def decompose_market_wide_rows(
+    rows: list[dict[str, Any]], ticker_field: str, date_field: str | None
+) -> list[tuple[str, str, dict[str, Any]]]:
+    """Turn one whole-market API response into (ticker, record_date, row)
+    triples ready for Storage.save_record. Pure function (no network,
+    no storage) so it's unit-testable on its own; run_batch_download.py
+    wires it to a live TwseOpenApiClient.fetch() call.
+
+    When date_field is None (e.g. twse_dividend has no single clean
+    date column), falls back to a composite key from 股利年度+期別 --
+    good enough for de-dup, not a real date.
+    """
+    out = []
+    for row in rows:
+        ticker = str(row.get(ticker_field, "")).strip()
+        if not ticker:
+            continue
+        if date_field:
+            record_date = str(row.get(date_field, "")).strip()
+        else:
+            record_date = f"{row.get('股利年度', '')}-{row.get('期別', '')}".strip()
+        if not record_date or record_date == "-":
+            continue
+        out.append((ticker, record_date, row))
+    return out
+
 
 class TwseOpenApiClient:
     def __init__(self, config):

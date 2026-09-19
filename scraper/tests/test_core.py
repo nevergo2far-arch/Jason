@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.rate_limiter import RateLimiter, RunBudget, RunBudgetExceeded
 from core.robots import RobotsCheck
 from core.storage import Storage
+from sources.twse_openapi_client import decompose_market_wide_rows
 
 
 class TestRateLimiter(unittest.TestCase):
@@ -167,6 +168,30 @@ class TestStorage(unittest.TestCase):
         self.assertIn("2330", manifest["tickers"])
         self.assertEqual(manifest["tickers"]["2330"]["name"], "台積電")
         self.assertEqual(manifest["tickers"]["2330"]["datasets"]["dividend"]["record_count"], 1)
+
+
+class TestDecomposeMarketWideRows(unittest.TestCase):
+    def test_date_field_present(self):
+        rows = [
+            {"Date": "20260918", "Code": "2330", "ClosingPrice": "600"},
+            {"Date": "20260918", "Code": "2454", "ClosingPrice": "1200"},
+        ]
+        triples = decompose_market_wide_rows(rows, ticker_field="Code", date_field="Date")
+        self.assertEqual(
+            [(t, d) for t, d, _ in triples],
+            [("2330", "20260918"), ("2454", "20260918")],
+        )
+
+    def test_composite_key_when_no_date_field(self):
+        rows = [{"公司代號": "2330", "股利年度": "2025", "期別": "第2季"}]
+        triples = decompose_market_wide_rows(rows, ticker_field="公司代號", date_field=None)
+        self.assertEqual(triples, [("2330", "2025-第2季", rows[0])])
+
+    def test_rows_missing_ticker_are_skipped(self):
+        rows = [{"Date": "20260918", "Code": "", "ClosingPrice": "600"}, {"Date": "20260918", "Code": "2330"}]
+        triples = decompose_market_wide_rows(rows, ticker_field="Code", date_field="Date")
+        self.assertEqual(len(triples), 1)
+        self.assertEqual(triples[0][0], "2330")
 
 
 if __name__ == "__main__":

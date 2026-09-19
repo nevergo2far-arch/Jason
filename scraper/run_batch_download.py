@@ -24,6 +24,14 @@ docstring) if you've decided you want them:
 
     GOODINFO_ENABLED=1 python run_batch_download.py queue --source goodinfo --datasets cash_flow,monthly_revenue_chart
     GOODINFO_ENABLED=1 python run_batch_download.py run --source goodinfo
+
+For whole-market daily price data, use `market-wide` instead of
+queue/run -- TWSE/TPEx's STOCK_DAY_ALL-style endpoints return every
+ticker in one call and always return whatever the most recent trading
+day is (there's no date parameter to request an older day):
+
+    python run_batch_download.py market-wide
+    python run_batch_download.py export
 """
 from __future__ import annotations
 
@@ -40,6 +48,8 @@ from core.storage import Storage
 from sources.finmind_client import FINMIND_DATASETS, FinMindClient
 from sources.goodinfo_client import PAGES as GOODINFO_PAGES
 from sources.goodinfo_client import GoodinfoClient
+from sources.twse_openapi_client import FIELD_MAP as TWSE_FIELD_MAP
+from sources.twse_openapi_client import TwseOpenApiClient, decompose_market_wide_rows
 
 logger = get_logger("batch", CONFIG.log_dir)
 
@@ -164,6 +174,27 @@ def _run_goodinfo(storage: Storage, client: GoodinfoClient, jobs: list[tuple[str
     logger.info("goodinfo run complete: %d done, %d errored, %d skipped", done, errored, skipped)
 
 
+def cmd_market_wide(storage: Storage, args) -> None:
+    client = TwseOpenApiClient(CONFIG.twse_openapi)
+    endpoint_keys = args.endpoints if args.endpoints != ["all"] else list(TWSE_FIELD_MAP.keys())
+    unknown = set(endpoint_keys) - set(TWSE_FIELD_MAP.keys())
+    if unknown:
+        raise SystemExit(f"Unknown endpoint(s): {unknown}. Valid: {list(TWSE_FIELD_MAP.keys())}")
+
+    for key in endpoint_keys:
+        field_info = TWSE_FIELD_MAP[key]
+        rows = client.fetch(key)
+        triples = decompose_market_wide_rows(rows, field_info["ticker_field"], field_info["date_field"])
+        for ticker, record_date, payload in triples:
+            storage.save_record("twse_openapi", key, ticker, record_date, payload)
+        storage.conn.commit()
+        dates_seen = sorted({record_date for _, record_date, _ in triples})[-3:]
+        logger.info(
+            "%s: fetched %d raw rows, saved %d records, recent date(s) in this batch: %s",
+            key, len(rows), len(triples), dates_seen,
+        )
+
+
 def cmd_export(storage: Storage, args) -> None:
     counts = storage.export_all(CONFIG.export_dir)
     manifest_path = storage.build_manifest(CONFIG.export_dir)
@@ -210,6 +241,11 @@ def main() -> None:
     p_run = sub.add_parser("run", help="Process pending jobs for one source.")
     p_run.add_argument("--source", choices=["finmind", "goodinfo"], required=True)
 
+    p_market = sub.add_parser(
+        "market-wide", help="Fetch whole-market TWSE/TPEx OpenAPI endpoints (one call each, no per-ticker looping)."
+    )
+    p_market.add_argument("--endpoints", nargs="+", default=["all"], choices=list(TWSE_FIELD_MAP.keys()) + ["all"])
+
     sub.add_parser("export", help="Export the SQLite DB to per-ticker JSON/CSV + a manifest.")
 
     p_all = sub.add_parser("all", help="stock-list + queue(finmind, all datasets, full market) + run + export.")
@@ -221,6 +257,7 @@ def main() -> None:
             "stock-list": cmd_stock_list,
             "queue": cmd_queue,
             "run": cmd_run,
+            "market-wide": cmd_market_wide,
             "export": cmd_export,
             "all": cmd_all,
         }[args.command](storage, args)
