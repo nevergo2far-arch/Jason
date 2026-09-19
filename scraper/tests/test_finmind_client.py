@@ -14,7 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import FinMindConfig
-from sources.finmind_client import FinMindClient
+from sources.finmind_client import FinMindApiError, FinMindClient
 
 
 class _FakeResponse:
@@ -60,6 +60,25 @@ class TestFinMindClientKeys(unittest.TestCase):
         _, kwargs = mock_get.call_args
         self.assertEqual(kwargs["params"]["start_date"], "2026-06-19")
         self.assertEqual(kwargs["params"]["data_id"], "2330")
+
+    @patch("core.http_client.requests.get")
+    def test_error_status_with_no_data_raises_instead_of_silently_succeeding(self, mock_get):
+        # This is the shape a quota-exhausted response takes: a normal
+        # 200 HTTP response (so the retry layer doesn't touch it) with
+        # a non-success `status` field and an empty data array.
+        mock_get.return_value = _FakeResponse({"status": 402, "msg": "Data quota exceeded", "data": []})
+        with self.assertRaises(FinMindApiError):
+            self.client.price("2330", "2026-06-19")
+
+    @patch("core.http_client.requests.get")
+    def test_error_status_with_data_present_does_not_raise(self, mock_get):
+        # Lenient path: some non-200 statuses come with usable data
+        # anyway (e.g. a partial-result warning) -- don't discard it.
+        mock_get.return_value = _FakeResponse({
+            "status": 299, "msg": "partial", "data": [{"date": "2026-09-18", "stock_id": "2330"}],
+        })
+        pairs = self.client.price("2330", "2026-06-19")
+        self.assertEqual(len(pairs), 1)
 
 
 if __name__ == "__main__":

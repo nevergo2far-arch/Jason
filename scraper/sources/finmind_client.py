@@ -22,6 +22,14 @@ from core.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
+
+class FinMindApiError(RuntimeError):
+    """A FinMind response with a non-success status and no data --
+    most commonly the free-tier hourly quota being exhausted. Raised
+    rather than swallowed so the batch runner's checkpoint records
+    the job as failed (retryable next run) instead of falsely "done"
+    with zero records."""
+
 # FinMind's long-format statement datasets return one row per
 # (date, line-item type) rather than one row per period — so the
 # natural dedup key is the pair, not the date alone.
@@ -64,9 +72,23 @@ class FinMindClient:
         )
         if not isinstance(body, dict) or "data" not in body:
             raise ValueError(f"Unexpected FinMind response shape for dataset={dataset}: {body!r}")
+        data = body["data"]
         if body.get("status") not in (200, "200", None):
-            logger.warning("FinMind dataset=%s data_id=%s returned status=%s msg=%s", dataset, data_id, body.get("status"), body.get("msg"))
-        return body["data"]
+            if not data:
+                # An error status with no data is most often quota
+                # exhaustion -- FinMind returns this as a normal JSON
+                # body (no error HTTP status the retry layer would
+                # catch), so silently treating it as "0 real records"
+                # would mark the checkpoint job done and it would
+                # never be retried once quota resets. Raise instead.
+                raise FinMindApiError(
+                    f"FinMind dataset={dataset} data_id={data_id} status={body.get('status')} msg={body.get('msg')}"
+                )
+            logger.warning(
+                "FinMind dataset=%s data_id=%s returned status=%s msg=%s (had %d records anyway, continuing)",
+                dataset, data_id, body.get("status"), body.get("msg"), len(data),
+            )
+        return data
 
     # -- market-wide -----------------------------------------------------
     def fetch_stock_list(self) -> list[dict[str, Any]]:
