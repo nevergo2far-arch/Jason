@@ -36,7 +36,11 @@ on:
 jobs:
   full-pull:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    # 355, not 360: GitHub's hard per-job cap on standard runners is 6h
+    # (360min) -- leaving a few minutes of margin means the upload
+    # steps (which use if: always()) reliably get to run before that
+    # hard cutoff kills the job outright and skips them.
+    timeout-minutes: 355
     env:
       FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
       # 600/hour per the account's documented limit -> 10/min. The
