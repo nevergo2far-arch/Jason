@@ -27,7 +27,17 @@ on:
 jobs:
   smoke-test:
     runs-on: ubuntu-latest
+    env:
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
     steps:
+      - name: Report whether a FinMind token is configured (never the value itself)
+        run: |
+          if [ -n "$FINMIND_TOKEN" ]; then
+            echo "FINMIND_TOKEN is set (length: ${#FINMIND_TOKEN} chars) -- requests below use it."
+          else
+            echo "FINMIND_TOKEN is NOT set -- requests below use the anonymous tier."
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
