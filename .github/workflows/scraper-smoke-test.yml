@@ -1,0 +1,93 @@
+name: Scraper smoke test (real network)
+
+# Manual only — this hits real external APIs (FinMind, TWSE/TPEx open
+# data), so it shouldn't run on every push. GitHub-hosted runners have
+# normal internet egress, unlike the sandbox this code was originally
+# written in, which is the whole point of running it here: it's the
+# first real check of whether the dataset names / endpoint paths in
+# sources/finmind_client.py and sources/twse_openapi_client.py are
+# actually correct.
+#
+# Deliberately does NOT touch Goodinfo — that client stays opt-in and
+# untouched by CI; enabling it is a human decision, not something a
+# workflow should do on its own.
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: pip install -r requirements.txt
+
+      - name: FinMind - fetch stock list (real API)
+        working-directory: scraper
+        run: python run_batch_download.py stock-list
+
+      - name: FinMind - queue a small batch (3 tickers, 2 datasets)
+        working-directory: scraper
+        run: >
+          python run_batch_download.py queue --source finmind
+          --datasets cash_flow_statement monthly_revenue --limit 3
+
+      - name: FinMind - run the queued batch (real API)
+        working-directory: scraper
+        run: python run_batch_download.py run --source finmind
+
+      - name: FinMind - export and print results
+        working-directory: scraper
+        run: |
+          python run_batch_download.py export
+          echo "----- index.json -----"
+          cat data/exports/index.json
+          echo "----- first ticker's cash_flow_statement.json (first 40 lines) -----"
+          FIRST_TICKER=$(python -c "import json; print(list(json.load(open('data/exports/index.json'))['tickers'])[0])")
+          head -n 40 "data/exports/${FIRST_TICKER}/cash_flow_statement.json" || echo "(no cash flow records for ${FIRST_TICKER})"
+
+      - name: TWSE/TPEx OpenAPI - probe each known endpoint (real API)
+        working-directory: scraper
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from config import CONFIG
+          from sources.twse_openapi_client import ENDPOINTS, TwseOpenApiClient
+
+          client = TwseOpenApiClient(CONFIG.twse_openapi)
+          for key in ENDPOINTS:
+              try:
+                  data = client.fetch(key)
+                  print(f"OK   {key}: {len(data)} rows, sample keys={list(data[0].keys()) if data else '(empty)'}")
+              except Exception as exc:
+                  print(f"FAIL {key}: {exc}")
+          PY
+
+      - name: MOPS - robots.txt check only (no data request)
+        working-directory: scraper
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from config import CONFIG
+          from sources.mops_client import QUERY_PATH, MopsClient
+
+          client = MopsClient(CONFIG.mops)
+          allowed = client.robots.can_fetch(QUERY_PATH)
+          print(f"robots.txt allows {QUERY_PATH}: {allowed}")
+          PY
+
+      - name: Upload exported data as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-smoke-test-output
+          path: scraper/data/exports/
+          if-no-files-found: warn
