@@ -41,7 +41,11 @@ class FinMindConfig:
     # Free tier works without a token but has a low hourly quota;
     # register at https://finmindtrade.com/ and set FINMIND_TOKEN to
     # raise the quota substantially. Never hardcode the token here.
-    base_url: str = "https://api.finmindtrade.com/api/v4/data"
+    base_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "FINMIND_BASE_URL", "https://api.finmindtrade.com/api/v4/data"
+        )
+    )
     token: str = field(default_factory=lambda: os.environ.get("FINMIND_TOKEN", ""))
     # Conservative default well under FinMind's documented free-tier
     # request budget; raise via env once you've confirmed your own
