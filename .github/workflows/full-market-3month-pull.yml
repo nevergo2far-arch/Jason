@@ -33,6 +33,20 @@ on:
       - ".github/workflows/full-market-3month-pull.yml"
   workflow_dispatch:
 
+# GitHub evaluates a pull_request path filter against the PR's whole
+# diff versus its base branch, not just the latest push's commits --
+# so as long as this file differs from main (i.e. the whole time this
+# PR is open), *every* push to the branch re-triggers this workflow,
+# regardless of what that push actually touched. That bit run #8: a
+# routine scraper/** code push spawned a second full backfill while
+# run #7 was still mid-flight, both hitting the same shared FinMind
+# quota and racing to resume from/overwrite the same DB artifact.
+# This group serializes runs (queues the new one) instead of letting
+# them run concurrently or auto-cancelling one and losing its progress.
+concurrency:
+  group: full-market-3month-pull
+  cancel-in-progress: false
+
 jobs:
   full-pull:
     runs-on: ubuntu-latest
