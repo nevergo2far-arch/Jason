@@ -79,11 +79,24 @@ jobs:
         # that run's progress and restore from the older, less-complete
         # DB instead -- caught by inspection before it actually
         # happened to run 5's restore step, but only just.
+        #
+        # `gh run list`'s default order is by *creation* time, not
+        # completion time -- a real bug this surfaced: run 7 (a normal
+        # multi-hour run, started first) was still in_progress when a
+        # routine code push spawned run 9 (created later, finished in
+        # under a minute after restoring a corrupted DB from a run I'd
+        # cancelled). Sorted by creation time, run 9 would keep
+        # outranking run 7 as "the previous run" even after run 7
+        # finishes with far more real progress, silently discarding
+        # hours of work in favor of a near-empty, broken DB. Sorting by
+        # `updatedAt` (completion time) instead picks whichever run
+        # actually finished most recently, which is what "resume from
+        # the latest state" should mean.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           RUN_ID=$(gh run list --workflow "full-market-3month-pull.yml" --status completed \
-            --json databaseId --jq '.[0].databaseId' || true)
+            --json databaseId,updatedAt --jq 'sort_by(.updatedAt) | reverse | .[0].databaseId' || true)
           echo "Previous run id: ${RUN_ID:-none}"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
@@ -96,6 +109,28 @@ jobs:
           run-id: ${{ steps.prev_run.outputs.run_id }}
           github-token: ${{ github.token }}
         continue-on-error: true # first-ever run (or artifact expired): fine, just starts fresh
+
+      - name: Verify restored database integrity (discard if corrupt)
+        # A real incident, not a hypothetical: restoring the DB
+        # artifact from a run that was cancelled mid-write (killed
+        # between opening a SQLite transaction and committing it) once
+        # produced a corrupted file that loaded fine but threw
+        # "database disk image is malformed" partway through the run,
+        # crashing after burning real FinMind quota on jobs the
+        # checkpoint never actually recorded. Checking integrity up
+        # front costs a few seconds and turns that failure mode into
+        # "starts fresh" instead of "wastes the whole run".
+        run: |
+          DB=scraper/data/tw_stock_data.db
+          if [ -f "$DB" ]; then
+            RESULT=$(sqlite3 "$DB" "PRAGMA integrity_check;" 2>&1 || echo "integrity_check command failed")
+            if [ "$RESULT" != "ok" ]; then
+              echo "::warning::Restored DB failed integrity check ($RESULT) -- discarding it, this run starts fresh instead of resuming."
+              rm -f "$DB"
+            else
+              echo "Restored DB passed integrity check."
+            fi
+          fi
 
       - uses: actions/setup-python@v5
         with:
