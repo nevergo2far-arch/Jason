@@ -1,0 +1,8 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"date": "2025-12-31", "stock_id": "2330", "type": "TotalAssets", "value": 793300000000, "origin_name": "資產總額"},
+    {"date": "2025-12-31", "stock_id": "2330", "type": "Inventories", "value": 28810000000, "origin_name": "存貨"}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"date": "2025-03-31", "stock_id": "2330", "type": "PropertyAndPlantAndEquipment", "value": -330826730000, "origin_name": "取得不動產廠房及設備"},
+    {"date": "2026-06-30", "stock_id": "2330", "type": "PropertyAndPlantAndEquipment", "value": -846764746000, "origin_name": "取得不動產廠房及設備"}
+  ]
+}

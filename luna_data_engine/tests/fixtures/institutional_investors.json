@@ -1,0 +1,8 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"date": "2026-09-01", "stock_id": "2330", "name": "Investment_Trust", "buy": 631374, "sell": 527505},
+    {"date": "2026-09-01", "stock_id": "2330", "name": "Foreign_Investor", "buy": 26004465, "sell": 20273602}
+  ]
+}

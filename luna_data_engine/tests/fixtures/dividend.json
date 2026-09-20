@@ -1,0 +1,8 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"date": "2025-03-24", "stock_id": "2330", "year": 2024, "CashEarningsDistribution": 4.5, "CashExDividendTradingDate": "2025-03-18", "CashDividendPaymentDate": "2025-04-10"},
+    {"date": "2026-03-23", "stock_id": "2330", "year": 2025, "CashEarningsDistribution": 6.0, "CashExDividendTradingDate": "2026-03-17", "CashDividendPaymentDate": "2026-04-09"}
+  ]
+}

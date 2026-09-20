@@ -1,0 +1,16 @@
+.env
+data/*.db
+data/raw/*
+!data/raw/.gitkeep
+logs/*.log
+logs/error.log
+reports/*.md
+reports/*.csv
+reports/*.json
+!reports/.gitkeep
+tests/_deadline_test*
+tests/_offline_test.db
+tests/_offline_test_raw/
+tests/_offline_test_logs/
+__pycache__/
+*.pyc

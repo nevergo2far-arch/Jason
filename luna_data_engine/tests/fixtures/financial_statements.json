@@ -1,0 +1,9 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"date": "2025-03-31", "stock_id": "2330", "type": "Revenue", "value": 839253664000, "origin_name": "營業收入"},
+    {"date": "2025-06-30", "stock_id": "2330", "type": "EPS", "value": 15.36, "origin_name": "基本每股盈餘"},
+    {"date": "2026-06-30", "stock_id": "2330", "type": "OperatingIncome", "value": 766602651000, "origin_name": "營業利益（損失）"}
+  ]
+}
