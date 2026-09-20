@@ -148,7 +148,14 @@ class FinMindClient:
         Use this instead of price() for any technical-indicator or
         backtest calculation spanning a stock split or ex-dividend
         date -- price() alone has a discontinuity there that isn't a
-        real price move."""
+        real price move.
+
+        CONFIRMED (2026-09-20, real API, 3/3 tickers, consistent across
+        two separate CI runs): this dataset returns HTTP 400 "Your level
+        is register. Please update your user level" -- it requires a
+        paid FinMind tier, same restriction as shareholding_distribution().
+        Not a quota issue (that's a distinct 402); this is a genuine
+        access-tier block on the current token."""
         return self.fetch_dataset_for_ticker("TaiwanStockPriceAdj", ticker, start_date)
 
     def market_index(self, index_id: str, start_date: str = "2000-01-01"):

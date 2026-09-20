@@ -190,4 +190,4 @@ result = client.fetch_financial_statement_detail("2330", "2024", "4")
 - Goodinfo client 只存原始 HTML，未寫解析器。
 - 未處理股票分割／減資造成的每股數字基期不一致問題——`price_adjusted`（還原權息股價）已經處理股價本身的部分，但財報科目（EPS、每股數字）目前未做對應調整，留給分析階段人工/AI 判斷。
 - 沒有寫排程（cron／Airflow 之類），如需要定期自動更新，需自行外掛排程工具呼叫 `run_batch_download.py all`。
-- 以下條件確認**無法**透過 FinMind／TWSE／TPEx 官方開放資料取得，需要另尋替代指標或人工來源：大戶持股分級表（`TaiwanStockHoldingSharesPer`，需付費 Backer/Sponsor 層級）、法說會日期、融券最後回補日、特大單買盤占比（無逐筆委託量分級來源）、新聞事件觸發（無合法自動化新聞 API）、研發費用率（三張財報皆無此科目）。
+- 以下條件確認**無法**透過 FinMind／TWSE／TPEx 官方開放資料取得，需要另尋替代指標或人工來源：大戶持股分級表（`TaiwanStockHoldingSharesPer`，需付費 Backer/Sponsor 層級）、**還原權息股價**（`TaiwanStockPriceAdj`，實測確認同樣需付費層級，回傳 `HTTP 400 "Your level is register"`，兩次獨立 CI 測試、3 檔股票皆一致——這點跟另一個獨立開發的 luna_data_engine 專案原本假設的「免費」不符，已回報對方修正）、法說會日期、融券最後回補日、特大單買盤占比（無逐筆委託量分級來源）、新聞事件觸發（無合法自動化新聞 API）、研發費用率（三張財報皆無此科目）。
