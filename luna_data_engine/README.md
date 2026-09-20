@@ -1,4 +1,15 @@
-# LUNA Data Engine — Download Skeleton V1.1
+# LUNA Data Engine — Download Skeleton V1.2
+
+**v1.2更新（2026-09-20，依工程師CI實測回饋修正）**：
+- 修復 `run_connectivity_test.py` 的診斷失效bug：`finmind_client.fetch()` 在重試次數用完後
+  會把 `result.outcome` 統一蓋成 `GAVE_UP`，導致原本用「`outcome == Outcome.API_ERROR`」之類
+  比對的診斷分支永遠比對不到（幾乎每次失敗都會走到這裡），只會落到最後「無法明確歸類」的
+  通用訊息，看不出到底是額度用盡、HTTP錯誤還是網路連不上。修正後改成直接看
+  `http_status`/`json_status`這些原始欄位（重試用完後仍保留最後一次嘗試的真實內容），
+  並把診斷邏輯抽成獨立可測試的 `diagnose(result, max_retries)` 純函式，
+  新增 `tests/test_connectivity_diagnosis.py`（7組情境，離線可跑，不需要真連FinMind）。
+- 診斷訊息新增工程師CI實測發現的根因說明：額度用盡(402)如果是跟其他排程共用同一組
+  FinMind token造成的，等額度重置後重跑即可，不代表程式碼本身有問題。
 
 **v1.1更新（2026-09-20，依LUNA實測回饋修正）**：
 - 新增 `run_connectivity_test.py`——跑POC前先跑這個，幾秒鐘確認token/連線沒問題，

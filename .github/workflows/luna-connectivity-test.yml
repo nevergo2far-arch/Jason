@@ -45,6 +45,7 @@ jobs:
         run: |
           python tests/test_offline_pipeline.py
           python tests/test_deadline_behavior.py
+          python tests/test_connectivity_diagnosis.py
 
   connectivity-test:
     runs-on: ubuntu-latest
