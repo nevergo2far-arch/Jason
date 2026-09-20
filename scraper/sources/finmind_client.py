@@ -143,6 +143,13 @@ class FinMindClient:
     def price(self, ticker: str, start_date: str = "2000-01-01"):
         return self.fetch_dataset_for_ticker("TaiwanStockPrice", ticker, start_date)
 
+    def valuation_ratios(self, ticker: str, start_date: str = "2000-01-01"):
+        """本益比/殖利率/股價淨值比 (PER, dividend yield, PBR), one row per
+        date. Prefer this over deriving P/E and yield by hand from
+        price + EPS + dividend data -- FinMind's own computation
+        handles TTM EPS and split adjustments correctly."""
+        return self.fetch_dataset_for_ticker("TaiwanStockPER", ticker, start_date)
+
     # -- 籌碼面 (chip/institutional-flow) datasets --------------------------
     def institutional_investors(self, ticker: str, start_date: str = "2000-01-01"):
         """三大法人（外資/投信/自營商）買賣超, one row per (date, category)."""
@@ -181,6 +188,7 @@ FINMIND_DATASETS: dict[str, str] = {
     "monthly_revenue": "monthly_revenue",
     "dividend": "dividend",
     "price": "price",
+    "valuation_ratios": "valuation_ratios",
     "institutional_investors": "institutional_investors",
     "margin_trading": "margin_trading",
     "foreign_holding": "foreign_holding",

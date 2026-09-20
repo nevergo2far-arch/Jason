@@ -76,6 +76,15 @@ class TestFinMindClientKeys(unittest.TestCase):
         self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
 
     @patch("core.http_client.requests.get")
+    def test_valuation_ratios_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "PER": 25.3, "dividend_yield": 1.8, "PBR": 8.9}],
+        })
+        pairs = self.client.valuation_ratios("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
     def test_start_date_is_forwarded_as_query_param(self, mock_get):
         mock_get.return_value = _FakeResponse({"status": 200, "msg": "ok", "data": []})
         self.client.price("2330", "2026-06-19")
