@@ -85,6 +85,26 @@ class TestFinMindClientKeys(unittest.TestCase):
         self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
 
     @patch("core.http_client.requests.get")
+    def test_price_adjusted_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "close": 2460.0}],
+        })
+        pairs = self.client.price_adjusted("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
+    def test_market_index_uses_index_id_as_data_id(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "TAIEX", "price": 46948.72}],
+        })
+        pairs = self.client.market_index("TAIEX", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["params"]["data_id"], "TAIEX")
+
+    @patch("core.http_client.requests.get")
     def test_start_date_is_forwarded_as_query_param(self, mock_get):
         mock_get.return_value = _FakeResponse({"status": 200, "msg": "ok", "data": []})
         self.client.price("2330", "2026-06-19")

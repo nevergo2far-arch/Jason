@@ -195,6 +195,19 @@ def cmd_market_wide(storage: Storage, args) -> None:
         )
 
 
+def cmd_market_index(storage: Storage, args) -> None:
+    """TAIEX/TPEx daily index (FinMind TaiwanStockTotalReturnIndex) --
+    not a real ticker, so it's a dedicated command rather than part of
+    the per-real-ticker queue/run loop."""
+    client = FinMindClient(CONFIG.finmind)
+    for index_id in ("TAIEX", "TPEx"):
+        pairs = client.market_index(index_id, args.start_date)
+        for record_date, payload in pairs:
+            storage.save_record("finmind", "market_index", index_id, record_date, payload)
+        storage.conn.commit()
+        logger.info("market_index %s: fetched %d records", index_id, len(pairs))
+
+
 def cmd_export(storage: Storage, args) -> None:
     counts = storage.export_all(CONFIG.export_dir)
     manifest_path = storage.build_manifest(CONFIG.export_dir)
@@ -251,6 +264,11 @@ def main() -> None:
     )
     p_market.add_argument("--endpoints", nargs="+", default=["all"], choices=list(TWSE_FIELD_MAP.keys()) + ["all"])
 
+    p_market_index = sub.add_parser(
+        "market-index", help="Fetch FinMind TAIEX/TPEx daily index (TaiwanStockTotalReturnIndex)."
+    )
+    p_market_index.add_argument("--start-date", default="2000-01-01")
+
     sub.add_parser("export", help="Export the SQLite DB to per-ticker JSON/CSV + a manifest.")
 
     p_all = sub.add_parser("all", help="stock-list + queue(finmind, all datasets, full market) + run + export.")
@@ -264,6 +282,7 @@ def main() -> None:
             "queue": cmd_queue,
             "run": cmd_run,
             "market-wide": cmd_market_wide,
+            "market-index": cmd_market_index,
             "export": cmd_export,
             "all": cmd_all,
         }[args.command](storage, args)

@@ -143,6 +143,23 @@ class FinMindClient:
     def price(self, ticker: str, start_date: str = "2000-01-01"):
         return self.fetch_dataset_for_ticker("TaiwanStockPrice", ticker, start_date)
 
+    def price_adjusted(self, ticker: str, start_date: str = "2000-01-01"):
+        """還原權息股價 (split/dividend-adjusted close), one row per date.
+        Use this instead of price() for any technical-indicator or
+        backtest calculation spanning a stock split or ex-dividend
+        date -- price() alone has a discontinuity there that isn't a
+        real price move."""
+        return self.fetch_dataset_for_ticker("TaiwanStockPriceAdj", ticker, start_date)
+
+    def market_index(self, index_id: str, start_date: str = "2000-01-01"):
+        """加權指數(TAIEX)/櫃買指數(TPEx) daily close. `index_id` is not a
+        real ticker -- pass the literal string "TAIEX" (上市) or "TPEx"
+        (上櫃) depending on which market's stocks you're comparing
+        against. Not part of FINMIND_DATASETS/the per-real-ticker queue
+        loop, since it isn't one -- fetch it directly (see
+        run_batch_download.py's `market-index` command)."""
+        return self.fetch_dataset_for_ticker("TaiwanStockTotalReturnIndex", index_id, start_date)
+
     def valuation_ratios(self, ticker: str, start_date: str = "2000-01-01"):
         """本益比/殖利率/股價淨值比 (PER, dividend yield, PBR), one row per
         date. Prefer this over deriving P/E and yield by hand from
@@ -188,6 +205,7 @@ FINMIND_DATASETS: dict[str, str] = {
     "monthly_revenue": "monthly_revenue",
     "dividend": "dividend",
     "price": "price",
+    "price_adjusted": "price_adjusted",
     "valuation_ratios": "valuation_ratios",
     "institutional_investors": "institutional_investors",
     "margin_trading": "margin_trading",

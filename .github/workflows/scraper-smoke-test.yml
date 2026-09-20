@@ -77,7 +77,7 @@ jobs:
         # already known-good.
         run: |
           python run_batch_download.py queue --source finmind \
-            --datasets foreign_holding shareholding_distribution securities_lending valuation_ratios \
+            --datasets foreign_holding shareholding_distribution securities_lending valuation_ratios price_adjusted \
             --tickers-file /tmp/smoke_test_tickers.txt
 
       - name: FinMind - run the queued batch (real API)
@@ -87,6 +87,10 @@ jobs:
       - name: TWSE/TPEx - market-wide daily data (real API, all listed tickers)
         working-directory: scraper
         run: python run_batch_download.py market-wide
+
+      - name: FinMind - TAIEX/TPEx index (real API, cross-checks LUNA data engine's dataset choice)
+        working-directory: scraper
+        run: python run_batch_download.py market-index
 
       - name: Export and print results
         working-directory: scraper
@@ -119,6 +123,14 @@ jobs:
           echo
           echo "----- new dataset verification: twse_taiex_index (synthetic ticker TAIEX) -----"
           cat data/exports/TAIEX/twse_taiex_index.json || echo "(NOT FOUND -- endpoint or synthetic-ticker wiring is wrong)"
+          echo
+          echo "----- new dataset verification for 2330: price_adjusted -----"
+          head -c 500 data/exports/2330/price_adjusted.json || echo "(NOT FOUND -- dataset name is wrong or exports/2330 has no such file)"
+          echo
+          echo "----- new dataset verification: market_index (FinMind TaiwanStockTotalReturnIndex, TAIEX + TPEx) -----"
+          head -c 500 data/exports/TAIEX/market_index.json || echo "(NOT FOUND -- TAIEX market_index missing)"
+          echo
+          head -c 500 data/exports/TPEx/market_index.json || echo "(NOT FOUND -- TPEx market_index missing)"
 
       - name: MOPS - robots.txt check only (no data request)
         working-directory: scraper

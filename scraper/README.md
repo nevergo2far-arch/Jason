@@ -174,8 +174,10 @@ result = client.fetch_financial_statement_detail("2330", "2024", "4")
 | `monthly_revenue` | 第四步月營收趨勢 | `revenue`、`revenue_year`、`revenue_month`、年增率相關欄位 |
 | `dividend` | 殖利率相關基本資訊 | `CashEarningsDistribution`、`StockEarningsDistribution`、公告/除權息日期 |
 | `price` | 股價（52週高低等）、技術面時間序列 | `open/max/min/close/Trading_Volume`，每個 (ticker, date) 一筆，可用 `--start-date` 取一段區間 |
+| `price_adjusted` | 還原權息股價，技術指標／回測跨越股票分割或除權息日必須用這個 | 同 `price` 欄位，但 `close` 已還原權息 |
 | `institutional_investors` | 籌碼面：三大法人買賣超 | `name`（`Foreign_Investor`/`Investment_Trust`/`Dealer_*` 等分類）＋ `buy`/`sell`；長格式，每個 (date, name) 一筆 |
 | `margin_trading` | 籌碼面：融資融券餘額 | `MarginPurchaseTodayBalance`、`ShortSaleTodayBalance` 等，每個 (ticker, date) 一筆 |
+| `market_index`（`market-index` 指令，非 per-ticker） | 加權指數(TAIEX)/櫃買指數(TPEx) 大盤基準，供「個股 vs 大盤」相對強弱類條件使用 | `price`；`ticker` 欄位存的是字面 `"TAIEX"`/`"TPEx"`，不是真實股票代號。上市股比對 TAIEX、上櫃股比對 TPEx，別配錯 |
 
 **注意**：`cash_flow_statement`／`income_statement`／`balance_sheet` 是「長格式」（一個日期會展開成多筆，每筆對應一個 `type` 線項），不是每個日期一列多欄；另一位 AI 分析員在彙總 A/B/C/D/E 時要先依 `type` 篩選、依 `date` 分組加總，不能直接把整份 JSON 陣列的 `value` 加總。`type` 的確切字串需對照 FinMind 目前文件核實（不同版本 API 曾經調整過命名）。
 
@@ -183,7 +185,9 @@ result = client.fetch_financial_statement_detail("2330", "2024", "4")
 
 ## 已知限制 / 待辦
 
+- **⚠️ Point-in-Time（公告日）陷阱，回測前務必處理**：`monthly_revenue`／`cash_flow_statement`／`income_statement`／`balance_sheet` 存的 `date` 欄位是 FinMind 回傳的**所屬期間**（月營收=所屬月份、財報=季底/年底），**不是實際公告日**。月營收實際公告日通常是次月10日前，季報約季底後45天內、年報約次年3-4月。如果回測程式直接用這個 `date` 判斷「這天已經知道這筆資料」，會有未來資訊洩漏（look-ahead bias）——用 2026-09-30 當作 9 月營收在 2026-09-30 當天就可取得，但實際上要到 10 月上旬才公告。這個 skeleton 只負責忠實存下 FinMind 原始資料，**Point-in-Time 對齊需要在條件計算/回測階段另外處理**，不要跳過這步。
 - MOPS 的細項查詢端點目前確認會被 robots.txt 擋下（因此不會實際送出請求），還沒找到 robots.txt 允許的正確查詢路徑，見上方「環境限制說明 / 實測結果」。
 - Goodinfo client 只存原始 HTML，未寫解析器。
-- 未處理股票分割／減資造成的每股數字基期不一致問題（`SKILL.md` 裡對此有詳細規則，若要讓下游 AI 分析員自動判斷，需要額外寫檢查邏輯，目前留給分析階段人工/AI 判斷）。
+- 未處理股票分割／減資造成的每股數字基期不一致問題——`price_adjusted`（還原權息股價）已經處理股價本身的部分，但財報科目（EPS、每股數字）目前未做對應調整，留給分析階段人工/AI 判斷。
 - 沒有寫排程（cron／Airflow 之類），如需要定期自動更新，需自行外掛排程工具呼叫 `run_batch_download.py all`。
+- 以下條件確認**無法**透過 FinMind／TWSE／TPEx 官方開放資料取得，需要另尋替代指標或人工來源：大戶持股分級表（`TaiwanStockHoldingSharesPer`，需付費 Backer/Sponsor 層級）、法說會日期、融券最後回補日、特大單買盤占比（無逐筆委託量分級來源）、新聞事件觸發（無合法自動化新聞 API）、研發費用率（三張財報皆無此科目）。
