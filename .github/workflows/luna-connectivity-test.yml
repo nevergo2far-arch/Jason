@@ -1,0 +1,73 @@
+name: LUNA data engine - connectivity test (real network)
+
+# The luna_data_engine/ project (built by the data-architecture side of
+# this project, "數據師") had a real incident: its POC run got silently
+# killed by the execution environment's time limit with zero output --
+# likely retry/backoff piling up across 320+ requests if the token was
+# invalid or a dataset needed a paid tier, not a real connectivity
+# failure. run_connectivity_test.py exists specifically to rule that in
+# or out in seconds, before ever running the full POC.
+#
+# Two jobs, cheapest-signal-first:
+#   1. offline-tests: no network, just confirms the v1.1 logic itself
+#      (deadline handling, offline pipeline fixtures) is sound.
+#   2. connectivity-test: one real FinMind API call via GitHub-hosted
+#      runners (which have normal internet egress, unlike the sandbox
+#      this was developed in) to get a real HTTP/JSON diagnosis.
+#
+# FINMIND_API_TOKEN comes from repo Settings -> Secrets and variables ->
+# Actions -> FINMIND_TOKEN (same secret the scraper/ pipeline uses) --
+# never hardcoded here, per 數據師's explicit reminder.
+on:
+  pull_request:
+    paths:
+      - "luna_data_engine/**"
+      - ".github/workflows/luna-connectivity-test.yml"
+  workflow_dispatch:
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        working-directory: luna_data_engine
+        run: pip install -r requirements.txt
+      - name: Run offline test suite (no network -- deadline behavior + fixture-based pipeline checks)
+        # These are plain scripts (assert-based, run via `if __name__ ==
+        # "__main__"`), not unittest.TestCase classes -- `unittest
+        # discover` finds zero tests here, silently reporting "OK".
+        # Run each directly instead, exactly as their own docstrings say to.
+        working-directory: luna_data_engine
+        run: |
+          python tests/test_offline_pipeline.py
+          python tests/test_deadline_behavior.py
+
+  connectivity-test:
+    runs-on: ubuntu-latest
+    needs: offline-tests
+    env:
+      FINMIND_API_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+    steps:
+      - name: Report whether a FinMind token is configured (never the value itself)
+        run: |
+          if [ -n "$FINMIND_API_TOKEN" ]; then
+            echo "FINMIND_API_TOKEN is set (length: ${#FINMIND_API_TOKEN} chars)."
+          else
+            echo "FINMIND_API_TOKEN is NOT set -- connectivity test will show what an empty token looks like."
+          fi
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        working-directory: luna_data_engine
+        run: pip install -r requirements.txt
+
+      - name: Real connectivity test (single small request, max 1 retry)
+        working-directory: luna_data_engine
+        run: python run_connectivity_test.py

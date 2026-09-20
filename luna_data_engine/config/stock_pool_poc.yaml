@@ -1,0 +1,36 @@
+# LUNA Data Engine — POC股票池 (10檔)
+# 依LUNA 2026-09-20指示：測試不同產業、股價規模及資料型態，不代表投資優先順序。
+# 金融股(2882)與非電子股(1216)為Claude依需求建議之預設代號，非LUNA/使用者指定特定標的，
+# 可直接修改此檔案替換成想測試的代號。
+
+poc_stocks:
+  - stock_id: "2330"
+    name: "台積電"
+    sector: "半導體"
+  - stock_id: "2454"
+    name: "聯發科"
+    sector: "IC設計"
+  - stock_id: "2308"
+    name: "台達電"
+    sector: "電子零組件"
+  - stock_id: "3037"
+    name: "欣興"
+    sector: "PCB"
+  - stock_id: "2327"
+    name: "國巨"
+    sector: "被動元件"
+  - stock_id: "2337"
+    name: "旺宏"
+    sector: "記憶體"
+  - stock_id: "3707"
+    name: "漢磊"
+    sector: "半導體"
+  - stock_id: "3016"
+    name: "嘉晶"
+    sector: "磊晶"
+  - stock_id: "2882"
+    name: "國泰金"
+    sector: "金融保險（金控，Claude建議代號，可替換）"
+  - stock_id: "1216"
+    name: "統一"
+    sector: "食品工業（非電子，Claude建議代號，可替換）"

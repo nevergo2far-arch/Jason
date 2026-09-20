@@ -1,0 +1,110 @@
+# LUNA Data Engine — 資料集設定
+# 對應 LUNA Short-Term Condition Registry 33項條件中，「可」的23項所需的10個FinMind資料集。
+# 8項「不可」條件（含大戶持股 TaiwanStockHoldingSharesPer）暫不納入，見 excluded_datasets。
+# 每個資料集的 condition_ids 對應 Condition_ID，供之後回溯到原始需求。
+
+datasets:
+
+  TaiwanStockInfo:
+    description: "股票基本資料（產業分類、上市櫃別）"
+    condition_ids: []          # 非條件計算直接使用，作為股票池主檔
+    scope: all_stocks          # 免費，查詢時可不帶data_id取得全市場
+    frequency: static
+    key_fields: [stock_id, stock_name, industry_category, type, date]
+
+  TaiwanStockPrice:
+    description: "日行情 OHLCV（原始股價，未還原權息）"
+    condition_ids: [ST-TECH-001, ST-TECH-002, ST-TECH-003]
+    scope: single_stock_free   # 免費但須帶data_id，全市場查詢屬付費
+    frequency: daily
+    full_history_start: "1994-10-01"
+    key_fields: [date, stock_id, Trading_Volume, Trading_money, open, max, min, close, spread, Trading_turnover]
+
+  TaiwanStockPriceAdj:
+    description: "還原權息收盤價"
+    condition_ids: [ST-TECH-004, ST-TECH-005, ST-TECH-007]
+    scope: single_stock_free
+    frequency: daily
+    full_history_start: "1994-10-01"
+    key_fields: [date, stock_id, open, max, min, close]
+
+  TaiwanStockTotalReturnIndex:
+    description: "加權指數(TAIEX)／櫃買指數(TPEx)每日收盤"
+    condition_ids: [ST-TECH-006]
+    scope: index_free
+    frequency: daily
+    full_history_start: "2003-01-01"
+    key_fields: [date, stock_id, price]
+    data_id_values: [TAIEX, TPEx]
+    note: "上市股用TAIEX、上櫃股用TPEx，下載時需依股票上市/上櫃別對應正確基準指數"
+
+  TaiwanStockInstitutionalInvestorsBuySell:
+    description: "三大法人（外資/投信/自營商）逐日買賣超"
+    condition_ids: [ST-TECH-010, ST-FLOW-002]
+    scope: single_stock_free
+    frequency: daily
+    full_history_start: "2005-01-01"
+    key_fields: [date, stock_id, name, buy, sell]
+    name_values: [Foreign_Investor, Investment_Trust, Dealer_self, Dealer_Hedging, Foreign_Dealer_Self]
+
+  TaiwanStockMonthRevenue:
+    description: "月營收"
+    condition_ids: [ST-RANK-001, ST-RANK-002, ST-RANK-003, ST-REV-001, ST-REV-002, ST-REV-003]
+    scope: single_stock_free
+    frequency: monthly
+    full_history_start: "2002-02-01"
+    key_fields: [date, stock_id, revenue, revenue_month, revenue_year]
+    point_in_time_note: "必須用實際公告日(通常次月10日前)作為Data_Available_Timestamp，不可用revenue_month月底日期，避免未來資訊洩漏"
+
+  TaiwanStockFinancialStatements:
+    description: "損益表（含EPS/營收/稅後淨利等科目）"
+    condition_ids: [ST-FUND-001, ST-FUND-002, ST-FUND-003, ST-CF-001]
+    scope: single_stock_free
+    frequency: quarterly
+    full_history_start: "1990-03-01"
+    key_fields: [date, stock_id, type, value, origin_name]
+    point_in_time_note: "季報公告日通常為季底後45天內，年報約次年3-4月，須用公告日對齊"
+    note: "已實測確認無研發費用(R&D)科目"
+
+  TaiwanStockBalanceSheet:
+    description: "資產負債表（含總資產/存貨等科目）"
+    condition_ids: [ST-FUND-002, ST-FUND-003, ST-FUND-004]
+    scope: single_stock_free
+    frequency: quarterly
+    full_history_start: "2011-12-01"
+    key_fields: [date, stock_id, type, value, origin_name]
+    point_in_time_note: "同上，季報/年報公告日對齊"
+
+  TaiwanStockCashFlowsStatement:
+    description: "現金流量表（含PropertyAndPlantAndEquipment作為Capex代理、OCF）"
+    condition_ids: [ST-FUND-005, ST-FUND-006, ST-CF-001]
+    scope: single_stock_free
+    frequency: quarterly
+    full_history_start: "2008-06-01"
+    key_fields: [date, stock_id, type, value, origin_name]
+
+  TaiwanStockDividend:
+    description: "股利政策（含除權/除息日）"
+    condition_ids: [ST-EVENT-004]
+    scope: single_stock_free
+    frequency: event
+    full_history_start: "2005-05-01"
+    key_fields: [date, stock_id, year, StockExDividendTradingDate, CashExDividendTradingDate, CashEarningsDistribution, StockEarningsDistribution]
+
+excluded_datasets:
+  TaiwanStockHoldingSharesPer:
+    description: "股權持股分級表（大戶持股）"
+    condition_ids: [ST-FLOW-003, ST-FLOW-004]
+    reason: "Backer/Sponsor付費層級，2026-09-20 LUNA決策：先用23項可用條件驗證研究價值，暫不升級付費方案"
+    revisit_when: "23項條件完成回測後，若假說C/D(籌碼相關)在樣本外有增量預測價值，再評估升級成本"
+
+unresolved_condition_ids:
+  # 這些條件目前無資料源可下載，不在此skeleton的下載範圍內，保留於登錄表供後續替代指標研究
+  - ST-FLOW-001   # 特大單買盤占比：無逐筆委託量分級來源
+  - ST-EVENT-001  # 新聞事件觸發：無合法自動化新聞API
+  - ST-EVENT-002  # 法說會日期：FinMind無此資料集
+  - ST-EVENT-003  # 融券最後回補日：MarginPurchaseShortSale無到期日欄位
+  - ST-EVENT-005  # 近日法說會：同EVENT-002
+  - ST-FUND-007   # 研發費用率：FinMind三張財報皆無此科目
+  - ST-TECH-008   # 條件定義本身不完整(N/X參數缺)，待LUNA補件
+  - ST-TECH-009   # 同上
