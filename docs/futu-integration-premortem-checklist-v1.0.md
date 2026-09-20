@@ -16,6 +16,7 @@
    - 對既有 FinMind 的影響評估
    - Futu Adapter MVP-01～MVP-04 實作計畫
 3. 若某條指令在你的環境找不到對應工具（例如沒裝 `tree`、資料庫不是 SQLite），清單裡都附了替代做法，不用整個跳過該項目。
+4. 標示【必做】的指令是時間有限時的最小可行盤點範圍；其餘為補充項目，有餘裕再跑。
 
 > ⚠️ **安全提醒**：Part 3 涉及 Token／連線設定時，**只需要確認「有哪些欄位、用什麼方式設定」，不要把實際 Token 值、密碼、連線字串貼出來**。指令設計上已盡量只印出 key 名稱／設定方式，若某條指令印出了實際敏感值，請自行遮蔽後再提供。
 
@@ -36,7 +37,7 @@
 ```bash
 # 進入 luna_data_engine 專案根目錄後執行
 
-# 1. 整體目錄樹（忽略常見雜訊目錄，深度限制 4 層避免洗版）
+# 【必做】1. 整體目錄樹（忽略常見雜訊目錄，深度限制 4 層避免洗版）
 if command -v tree >/dev/null 2>&1; then
   tree -L 4 -I '__pycache__|.git|.venv|venv|node_modules|*.egg-info|.pytest_cache'
 else
@@ -45,9 +46,12 @@ else
        -o -name 'node_modules' -o -name '.pytest_cache' \) -prune -o -print
 fi
 
-# 2. 找出所有跟 adapter/source/connector 相關的目錄或檔名
+# 【必做】2. 找出所有跟 adapter/source/connector 相關的目錄或檔名，以及現有測試目錄
 find . -type d \( -iname '*adapter*' -o -iname '*source*' -o -iname '*connector*' \) \
   -not -path '*/.git/*' -not -path '*/.venv/*'
+find . -type d -iname '*test*' -not -path '*/.git/*' -not -path '*/.venv/*'
+find . -type d \( -iname '*storage*' -o -iname '*repository*' -o -iname '*db*' -o -iname '*data*' \) \
+  -not -path '*/.git/*' -not -path '*/.venv/*' | head -30
 
 # 3. 找出所有跟 FinMind 相關的檔案（確認現有模組完整範圍）
 grep -rli 'finmind' --include='*.py' . 2>/dev/null
@@ -55,15 +59,18 @@ grep -rli 'finmind' --include='*.py' . 2>/dev/null
 # 4. 找出現有的抽象基底類/介面定義（Protocol、ABC、abstractmethod）
 grep -rn 'class.*Protocol\|class.*ABC\|@abstractmethod' --include='*.py' . 2>/dev/null
 
-# 5. 現有測試目錄結構與慣例
-find . -type d -iname 'test*' -not -path '*/.git/*' -not -path '*/.venv/*'
+# 5. 測試檔案命名慣例
 find . -type f -name 'test_*.py' -o -name '*_test.py' | head -50
 
 # 6. 現有 schema / model 定義檔（pydantic、dataclass、SQLAlchemy、ORM）
 grep -rln 'class.*BaseModel\|@dataclass\|class.*Base):' --include='*.py' . 2>/dev/null
 
-# 7. 專案的套件管理與相依（確認 futu-api 是否已裝、目前用的 DB/ORM 套件）
-cat pyproject.toml 2>/dev/null || cat requirements.txt 2>/dev/null || cat Pipfile 2>/dev/null
+# 7. 命名與分層規則：頂層目錄、是否有架構說明文件
+ls -la
+find . -maxdepth 1 -iname 'README*' -o -maxdepth 1 -iname 'ARCHITECTURE*' -o -maxdepth 1 -iname 'CONTRIBUTING*'
+
+# 8. 專案的套件管理與相依（確認 futu-api 是否已裝、目前用的 DB/ORM 套件）
+cat pyproject.toml 2>/dev/null || cat setup.py 2>/dev/null || cat requirements.txt 2>/dev/null || cat Pipfile 2>/dev/null
 ```
 
 ---
@@ -81,20 +88,27 @@ cat pyproject.toml 2>/dev/null || cat requirements.txt 2>/dev/null || cat Pipfil
 ### 執行指令
 
 ```bash
-# 1. 找關鍵字：instrument / registry / symbol_master / security_master 等常見命名
-grep -rli 'instrument\|registry\|symbol_master\|security_master' --include='*.py' . 2>/dev/null
+# 【必做】1. 找關鍵字：instrument / registry / symbol_master / security_master 等常見命名
+grep -rli 'instrument' --include='*.py' . 2>/dev/null | grep -v '/.git/'
+grep -rli 'registry' --include='*.py' . 2>/dev/null | grep -v '/.git/'
+grep -rn 'class.*Instrument\|class.*Symbol\|class.*Registry\|class.*Security' --include='*.py' . 2>/dev/null | grep -v '/.git/'
 
-# 2. 找 ORM model 或 schema 定義檔（依專案用的框架擇一或都跑）
-grep -rn 'class.*Instrument\|class.*Symbol\|class.*Security' --include='*.py' . 2>/dev/null
+# 【必做】2. 若用 SQLite，找出資料庫檔並列出所有表與 schema
+find . -iname '*.db' -o -iname '*.sqlite' -o -iname '*.sqlite3' 2>/dev/null | grep -v '/.git/'
+# 找到檔案後（把 <db_path> 換成實際路徑）：
+# sqlite3 <db_path> '.tables'
+# sqlite3 <db_path> '.schema'
 
-# 3. 若用 SQLAlchemy/Alembic，列出 migration 目錄與最新幾筆
+# 【必做】3. 若用 SQLAlchemy / ORM，找 model 定義
+grep -rn 'class .*\(Base\)\|class .*\(db.Model\)\|__tablename__' --include='*.py' . 2>/dev/null | grep -v '/.git/'
+
+# 4. 若用 Alembic，列出 migration 目錄與最新幾筆
 find . -type d -iname 'migrations' -not -path '*/.git/*'
 find . -path '*migrations*' -name '*.py' | sort | tail -20
 
-# 4. 若已知資料庫檔案（Part 3 找到後回頭跑這條），直接列出資料表與該表 schema
-#    以 SQLite 為例，把 <db_file> 換成實際路徑：
-# sqlite3 <db_file> ".tables"
-# sqlite3 <db_file> ".schema <instrument_table_name>"
+# 5. 確認現有欄位是否已包含 Symbol/Market/Source/Contract 類似概念
+#    （把 <model_file.py> 換成上一步找到的實際檔名）
+# grep -n 'Column\|:.*str\|:.*int' <model_file.py>
 ```
 
 > 若指令 1、2 都沒有任何結果，代表目前專案**尚未有 Instrument Registry**，Part 2 的盤點結論直接記為「不存在，需新建」，不用勉強找。
@@ -115,33 +129,32 @@ find . -path '*migrations*' -name '*.py' | sort | tail -20
 ### 執行指令
 
 ```bash
-# 1. 找資料庫連線設定（只看設定「方式」，執行後檢查輸出有沒有印出實際密碼/連線字串，
-#    有的話先手動遮蔽再使用）
-grep -rn 'sqlite\|postgres\|mysql\|DATABASE_URL\|DB_' --include='*.py' --include='*.env*' --include='*.toml' --include='*.yaml' --include='*.yml' . 2>/dev/null | grep -v '\.git/'
+# 【必做】1. 找到 FinMind Adapter 本體
+grep -rli 'finmind' --include='*.py' . 2>/dev/null | grep -v '/.git/'
 
-# 2. 找實際的 db 檔案（若為 SQLite）
-find . -iname '*.db' -o -iname '*.sqlite' -o -iname '*.sqlite3' 2>/dev/null | grep -v '\.git/'
+# 【必做】2. 判斷使用哪種資料庫引擎
+grep -rln 'sqlite3\|create_engine\|psycopg2\|pymysql\|MongoClient' --include='*.py' . 2>/dev/null | grep -v '/.git/'
+find . -iname '*.db' -o -iname '*.sqlite' -o -iname '*.sqlite3' 2>/dev/null | grep -v '/.git/'
+# 找到 SQLite 檔案後（把 <db_path> 換成實際路徑）：
+# sqlite3 <db_path> '.tables'
+# sqlite3 <db_path> '.schema'
 
-# 3. 若找到 SQLite 檔案，列出所有資料表（把 <db_file> 換成上一步找到的路徑）
-# sqlite3 <db_file> ".tables"
+# 3. 查看 FinMind Adapter 的輸入/輸出函式簽名（不看實作細節，只看介面）
+#    （把 <finmind_file.py> 換成上一步找到的實際檔名）
+# grep -n 'def ' <finmind_file.py>
 
-# 4. 列出每張表的 schema（把 <table_name> 換成 Part 3.3 列出的表名，逐一跑）
-# sqlite3 <db_file> ".schema <table_name>"
+# 4. 確認 Raw／Clean 資料是否分開存放（目錄名或表名是否有 raw/clean 字樣）
+grep -rli 'raw_data\|raw_record\|raw_store\|clean_data\|normalized' --include='*.py' . 2>/dev/null | grep -v '/.git/'
+find . -iname '*raw*' -o -iname '*clean*' 2>/dev/null | grep -v '/.git/' | grep -v '__pycache__'
 
-# 5. 找 FinMind Adapter 的進入點與輸入輸出型別定義
-grep -rn 'def.*finmind\|class.*[Ff]in[Mm]ind' --include='*.py' . 2>/dev/null
+# 【必做】5. Token／連線設定方式（只確認結構，不要輸出實際值）
+find . -iname '.env*' -o -iname 'config*.py' -o -iname 'settings*.py' 2>/dev/null | grep -v '/.git/'
+# 只看有哪些變數名，不輸出值：
+grep -oE '^[A-Z_]+=' .env 2>/dev/null
+grep -n 'os.environ\|os.getenv' --include='*.py' -r . 2>/dev/null | grep -v '/.git/' | head -20
 
-# 6. 找 Raw / Clean 資料儲存邏輯的關鍵字
-grep -rli 'raw_record\|raw_store\|raw_data\|clean_data\|normalized' --include='*.py' . 2>/dev/null
-
-# 7. 找 Token / API Key 設定方式（只看變數名稱與設定位置，不要印出值）
-grep -rn 'TOKEN\|API_KEY\|api_key' --include='*.py' --include='*.env.example' --include='*.toml' --include='*.yaml' --include='*.yml' . 2>/dev/null | grep -v '\.git/'
-# 若上面那條可能印出 .env 裡的實際值，改用只看檔名/key 名稱：
-find . -iname '.env*' -not -path '*/.git/*'
-grep -o '^[A-Z_]*TOKEN[A-Z_]*\|^[A-Z_]*API_KEY[A-Z_]*' .env.example 2>/dev/null
-
-# 8. 找主回補作業（backfill）的排程或進入點
-grep -rli 'backfill\|scheduler\|cron' --include='*.py' . 2>/dev/null
+# 6. 找主回補作業（backfill）的排程或進入點
+grep -rli 'backfill\|scheduler\|cron' --include='*.py' . 2>/dev/null | grep -v '/.git/'
 ```
 
 ---
@@ -161,11 +174,18 @@ grep -rli 'backfill\|scheduler\|cron' --include='*.py' . 2>/dev/null
 <資料庫類型、資料表 schema、Adapter 輸入輸出、Raw/Clean 儲存方式、Token 設定方式（不含實際值）>
 ```
 
-收到後，我會**只根據你提供的實際輸出**（不臆測現有程式內容）產出：
-1. `BaseMarketDataAdapter` 共同介面草案
-2. FinMind／Futu 欄位差異表
-3. 共用 Schema vs. 來源專屬欄位的分工
-4. 對既有 FinMind 的影響評估（是否需要改動、風險點）
-5. Futu Adapter MVP-01～MVP-04 實作計畫
+若某區塊指令回傳空（例如沒有 Instrument Registry），直接告訴我「不存在」即可，不需自行推斷或用其他資訊補全。
 
-在那之前，**不會**修改既有 FinMind 程式，也不會開 PR。
+---
+
+## 收集完成後，我會提出的五項設計產出（目前尚未開始，先列出範圍供確認）
+
+1. **`BaseMarketDataAdapter` 共同介面草案**——根據實際 FinMind 現有函式簽名與 Futu 規格，重新設計一套雙邊都能實作的抽象介面（取代 [`futu-realtime-data-adapter-spec-v1.0.md`](./futu-realtime-data-adapter-spec-v1.0.md) 中未經驗證的版本）。
+2. **FinMind 與 Futu 的欄位差異表**——並列兩邊實際欄位名/型別/語義，標出名稱不一致或語義不對等的地方。
+3. **共用 Schema 與來源專屬欄位的分工**——哪些欄位進 Market Snapshot V1.1 統一格式，哪些保留在來源專屬區塊。
+4. **對現有 FinMind 的影響評估**——明確列出若日後要讓 FinMind 也改用共同介面，需改動哪些地方、風險在哪裡（本階段不改，但先評估以利日後決策）。
+5. **Futu Adapter MVP-01～MVP-04 實作計畫**——在既有目錄結構下的具體檔案清單與順序，接上已寫好的驗證規則與測試骨架。
+
+我會**只根據你提供的實際指令輸出**產出以上五項，不臆測現有程式內容。
+
+> ✅ **此階段確認一件事**：只盤點與設計，不改現有 FinMind 程式，也不開 PR，待共同介面確認後再進入實作。
