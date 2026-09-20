@@ -46,6 +46,13 @@ _LONG_FORMAT_BY_NAME_DATASETS = {
     "TaiwanStockInstitutionalInvestorsBuySell",
 }
 
+# 股權分散表 (shareholder count by holding-size bracket) is long-format
+# too, discriminated by `HoldingSharesLevel` (the bracket, e.g.
+# "100,001-200,000") -- one row per (date, bracket).
+_LONG_FORMAT_BY_HOLDING_LEVEL_DATASETS = {
+    "TaiwanStockHoldingSharesPer",
+}
+
 
 class FinMindClient:
     def __init__(self, config):
@@ -106,6 +113,8 @@ class FinMindClient:
                 key = f"{rec.get('date')}|{rec.get('type')}"
             elif dataset in _LONG_FORMAT_BY_NAME_DATASETS:
                 key = f"{rec.get('date')}|{rec.get('name')}"
+            elif dataset in _LONG_FORMAT_BY_HOLDING_LEVEL_DATASETS:
+                key = f"{rec.get('date')}|{rec.get('HoldingSharesLevel')}"
             elif dataset == "TaiwanStockMonthRevenue":
                 key = f"{rec.get('revenue_year')}-{int(rec.get('revenue_month', 0)):02d}"
             else:
@@ -143,6 +152,25 @@ class FinMindClient:
         """融資融券餘額, one row per date."""
         return self.fetch_dataset_for_ticker("TaiwanStockMarginPurchaseShortSale", ticker, start_date)
 
+    def foreign_holding(self, ticker: str, start_date: str = "2000-01-01"):
+        """外資及陸資持股比例 (foreign/mainland shareholding ratio), one
+        row per date -- unlike shareholding_distribution() this is NOT
+        long-format (no bracket dimension)."""
+        return self.fetch_dataset_for_ticker("TaiwanStockShareholding", ticker, start_date)
+
+    def shareholding_distribution(self, ticker: str, start_date: str = "2000-01-01"):
+        """股權分散表: shareholder count by holding-size bracket, one row
+        per (date, bracket). Published weekly by TDCC, not daily."""
+        return self.fetch_dataset_for_ticker("TaiwanStockHoldingSharesPer", ticker, start_date)
+
+    def securities_lending(self, ticker: str, start_date: str = "2000-01-01"):
+        """借券賣出 (securities lending / short-lending activity), one row
+        per date. Dataset name unverified against current FinMind docs --
+        included in the smoke test so CI confirms it before this is
+        trusted; if it 404s or returns nothing, the dataset either
+        doesn't exist under this name or requires a paid tier."""
+        return self.fetch_dataset_for_ticker("TaiwanStockSecuritiesLending", ticker, start_date)
+
 
 # dataset key -> FinMind client method name, used by the batch runner
 # to build its job matrix generically.
@@ -155,4 +183,7 @@ FINMIND_DATASETS: dict[str, str] = {
     "price": "price",
     "institutional_investors": "institutional_investors",
     "margin_trading": "margin_trading",
+    "foreign_holding": "foreign_holding",
+    "shareholding_distribution": "shareholding_distribution",
+    "securities_lending": "securities_lending",
 }

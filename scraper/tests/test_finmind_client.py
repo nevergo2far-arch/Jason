@@ -54,6 +54,28 @@ class TestFinMindClientKeys(unittest.TestCase):
         self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
 
     @patch("core.http_client.requests.get")
+    def test_shareholding_distribution_keyed_by_date_and_holding_level(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [
+                {"date": "2026-09-18", "stock_id": "2330", "HoldingSharesLevel": "1-999", "people": 100},
+                {"date": "2026-09-18", "stock_id": "2330", "HoldingSharesLevel": "1,000-5,000", "people": 200},
+            ],
+        })
+        pairs = self.client.shareholding_distribution("2330", "2026-06-19")
+        keys = [k for k, _ in pairs]
+        self.assertEqual(keys, ["2026-09-18|1-999", "2026-09-18|1,000-5,000"])
+
+    @patch("core.http_client.requests.get")
+    def test_foreign_holding_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "ForeignInvestmentSharesRatio": 75.5}],
+        })
+        pairs = self.client.foreign_holding("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
     def test_start_date_is_forwarded_as_query_param(self, mock_get):
         mock_get.return_value = _FakeResponse({"status": 200, "msg": "ok", "data": []})
         self.client.price("2330", "2026-06-19")

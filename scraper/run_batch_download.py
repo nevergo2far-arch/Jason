@@ -119,16 +119,11 @@ def cmd_run(storage: Storage, args) -> None:
 
 
 def _run_finmind(storage: Storage, client: FinMindClient, jobs: list[tuple[str, str, str]], start_date: str) -> None:
-    method_by_dataset = {
-        "cash_flow_statement": client.cash_flow_statement,
-        "income_statement": client.income_statement,
-        "balance_sheet": client.balance_sheet,
-        "monthly_revenue": client.monthly_revenue,
-        "dividend": client.dividend,
-        "price": client.price,
-        "institutional_investors": client.institutional_investors,
-        "margin_trading": client.margin_trading,
-    }
+    # Derived from the registry (dataset key -> method name) rather than
+    # duplicated here by hand -- every dataset added to FINMIND_DATASETS
+    # in finmind_client.py is automatically runnable without touching
+    # this file too.
+    method_by_dataset = {key: getattr(client, method_name) for key, method_name in FINMIND_DATASETS.items()}
     done = errored = 0
     for ticker, dataset, source in jobs:
         try:
