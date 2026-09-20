@@ -162,6 +162,20 @@ jobs:
         run: python run_batch_download.py market-wide
 
       - name: Export
+        # Independently flagged by the data-architecture side's own
+        # incident on a related project (a POC run silently killed by
+        # the execution environment's time limit produced zero output,
+        # because report generation only ran after the download loop
+        # finished): the same gap existed here. This step had no
+        # `if: always()`, so hitting the 355-minute job timeout during
+        # "FinMind - run" would cancel the job before Export ever ran --
+        # the raw DB is still safely preserved via the upload steps
+        # below (also if: always()), but the human/AI-readable JSON/CSV
+        # export and index.json manifest would silently not exist for
+        # that run despite real progress sitting in the DB. Exporting
+        # unconditionally means every run, timed out or not, produces
+        # a usable export from whatever the DB currently holds.
+        if: always()
         working-directory: scraper
         run: |
           python run_batch_download.py export
