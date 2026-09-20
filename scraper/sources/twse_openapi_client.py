@@ -37,6 +37,11 @@ ENDPOINTS: dict[str, tuple[str, str]] = {
     "twse_stock_day_all": ("twse", "/v1/exchangeReport/STOCK_DAY_ALL"),  # all-listed daily OHLC
     "twse_dividend": ("twse", "/v1/opendata/t187ap45_L"),  # 上市公司股利分派情形
     "tpex_stock_day_all": ("tpex", "/v1/tpex_mainboard_daily_close_quotes"),  # OTC daily quotes
+    # Misleadingly named -- despite "5MINS" this returns one row per
+    # *day* (OpeningIndex/HighestIndex/LowestIndex/ClosingIndex), i.e.
+    # the daily TAIEX (加權股價指數) series, not intraday data. Needed
+    # for "price vs. index" relative-strength screening conditions.
+    "twse_taiex_index": ("twse", "/v1/indicesReport/MI_5MINS_HIST"),
 }
 
 # How to decompose each endpoint's whole-market response into
@@ -51,11 +56,16 @@ FIELD_MAP: dict[str, dict[str, str | None]] = {
     "twse_stock_day_all": {"ticker_field": "Code", "date_field": "Date"},
     "tpex_stock_day_all": {"ticker_field": "SecuritiesCompanyCode", "date_field": "Date"},
     "twse_dividend": {"ticker_field": "公司代號", "date_field": None},
+    # A single index series has no per-security ticker column at all --
+    # ticker_field=None + synthetic_ticker tells decompose_market_wide_rows
+    # to file every row under this fixed pseudo-ticker instead.
+    "twse_taiex_index": {"ticker_field": None, "date_field": "Date", "synthetic_ticker": "TAIEX"},
 }
 
 
 def decompose_market_wide_rows(
-    rows: list[dict[str, Any]], ticker_field: str, date_field: str | None
+    rows: list[dict[str, Any]], ticker_field: str | None, date_field: str | None,
+    synthetic_ticker: str | None = None,
 ) -> list[tuple[str, str, dict[str, Any]]]:
     """Turn one whole-market API response into (ticker, record_date, row)
     triples ready for Storage.save_record. Pure function (no network,
@@ -65,10 +75,18 @@ def decompose_market_wide_rows(
     When date_field is None (e.g. twse_dividend has no single clean
     date column), falls back to a composite key from 股利年度+期別 --
     good enough for de-dup, not a real date.
+
+    ticker_field=None + synthetic_ticker is for whole-market-as-a-single-
+    series data with no per-security column at all (e.g. a broad market
+    index) -- every row is filed under the fixed synthetic_ticker instead
+    of a real one.
     """
     out = []
     for row in rows:
-        ticker = str(row.get(ticker_field, "")).strip()
+        if ticker_field is None:
+            ticker = synthetic_ticker or ""
+        else:
+            ticker = str(row.get(ticker_field, "")).strip()
         if not ticker:
             continue
         if date_field:

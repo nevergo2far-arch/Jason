@@ -221,6 +221,16 @@ class TestDecomposeMarketWideRows(unittest.TestCase):
         self.assertEqual(len(triples), 1)
         self.assertEqual(triples[0][0], "2330")
 
+    def test_synthetic_ticker_for_single_index_series(self):
+        # twse_taiex_index has no per-security column -- every row
+        # files under the fixed synthetic ticker instead.
+        rows = [
+            {"Date": "1150901", "ClosingIndex": "46948.72"},
+            {"Date": "1150902", "ClosingIndex": "46164.72"},
+        ]
+        triples = decompose_market_wide_rows(rows, ticker_field=None, date_field="Date", synthetic_ticker="TAIEX")
+        self.assertEqual([(t, d) for t, d, _ in triples], [("TAIEX", "1150901"), ("TAIEX", "1150902")])
+
 
 if __name__ == "__main__":
     unittest.main()

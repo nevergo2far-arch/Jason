@@ -181,7 +181,10 @@ def cmd_market_wide(storage: Storage, args) -> None:
     for key in endpoint_keys:
         field_info = TWSE_FIELD_MAP[key]
         rows = client.fetch(key)
-        triples = decompose_market_wide_rows(rows, field_info["ticker_field"], field_info["date_field"])
+        triples = decompose_market_wide_rows(
+            rows, field_info["ticker_field"], field_info["date_field"],
+            synthetic_ticker=field_info.get("synthetic_ticker"),
+        )
         for ticker, record_date, payload in triples:
             storage.save_record("twse_openapi", key, ticker, record_date, payload)
         storage.conn.commit()
