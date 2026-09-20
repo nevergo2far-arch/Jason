@@ -187,14 +187,6 @@ class FinMindClient:
         per (date, bracket). Published weekly by TDCC, not daily."""
         return self.fetch_dataset_for_ticker("TaiwanStockHoldingSharesPer", ticker, start_date)
 
-    def securities_lending(self, ticker: str, start_date: str = "2000-01-01"):
-        """借券賣出 (securities lending / short-lending activity), one row
-        per date. Dataset name unverified against current FinMind docs --
-        included in the smoke test so CI confirms it before this is
-        trusted; if it 404s or returns nothing, the dataset either
-        doesn't exist under this name or requires a paid tier."""
-        return self.fetch_dataset_for_ticker("TaiwanStockSecuritiesLending", ticker, start_date)
-
 
 # dataset key -> FinMind client method name, used by the batch runner
 # to build its job matrix generically.
@@ -211,5 +203,4 @@ FINMIND_DATASETS: dict[str, str] = {
     "margin_trading": "margin_trading",
     "foreign_holding": "foreign_holding",
     "shareholding_distribution": "shareholding_distribution",
-    "securities_lending": "securities_lending",
 }

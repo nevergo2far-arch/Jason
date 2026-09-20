@@ -66,7 +66,7 @@ jobs:
             --datasets cash_flow_statement monthly_revenue \
             --tickers-file /tmp/smoke_test_tickers.txt
 
-      - name: FinMind - queue new datasets under verification (foreign_holding, shareholding_distribution, securities_lending, valuation_ratios)
+      - name: FinMind - queue new datasets under verification (foreign_holding, shareholding_distribution, valuation_ratios)
         working-directory: scraper
         # These dataset names/methods were just added to
         # finmind_client.py and have never been hit against the real
@@ -77,7 +77,7 @@ jobs:
         # already known-good.
         run: |
           python run_batch_download.py queue --source finmind \
-            --datasets foreign_holding shareholding_distribution securities_lending valuation_ratios price_adjusted \
+            --datasets foreign_holding shareholding_distribution valuation_ratios price_adjusted \
             --tickers-file /tmp/smoke_test_tickers.txt
 
       - name: FinMind - run the queued batch (real API)
@@ -114,9 +114,6 @@ jobs:
           echo
           echo "----- new dataset verification for 2330: shareholding_distribution -----"
           head -c 2000 data/exports/2330/shareholding_distribution.json || echo "(NOT FOUND -- dataset name is wrong or exports/2330 has no such file)"
-          echo
-          echo "----- new dataset verification for 2330: securities_lending -----"
-          cat data/exports/2330/securities_lending.json || echo "(NOT FOUND -- dataset name is wrong or exports/2330 has no such file)"
           echo
           echo "----- new dataset verification for 2330: valuation_ratios -----"
           cat data/exports/2330/valuation_ratios.json || echo "(NOT FOUND -- dataset name is wrong or exports/2330 has no such file)"
