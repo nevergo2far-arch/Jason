@@ -1,0 +1,205 @@
+name: Full-market 3-month pull (price + chip data, real network)
+
+# One-off large pull: every TWSE+TPEx ticker's price, institutional
+# buy/sell, and margin trading for the last ~3 months, plus a
+# whole-market snapshot from TWSE/TPEx OpenAPI, for technical +
+# chip-flow (籌碼面) analysis. This is a multi-thousand-ticker job that
+# can run for hours, unlike scraper-smoke-test.yml's small fixed
+# sample -- kept as its own workflow so it doesn't fire on every
+# routine scraper/** push.
+#
+# First run (no FINMIND_TOKEN) hit FinMind's anonymous free-tier
+# quota hard: only 972 of 9447 (ticker, dataset) jobs succeeded before
+# every subsequent request failed for the rest of the run. Those 8475
+# failures landed in the checkpoint as `error`, not falsely `done`
+# (the FinMindApiError fix), so they're safe to retry -- but doing
+# that needs FINMIND_TOKEN set (raises the quota to the account's
+# documented 600 req/hour) AND the checkpoint database carried over
+# from the previous run (see the restore step below), or every rerun
+# just re-attempts the same 9447 jobs from zero instead of targeting
+# the 8475 that actually failed.
+#
+# Uses secrets.FINMIND_TOKEN if the repo has it configured (Settings
+# -> Secrets and variables -> Actions -> New repository secret). Runs
+# fine without it too, just back at the low anonymous quota.
+#
+# Triggered the same way scraper-smoke-test.yml originally was:
+# workflow_dispatch needs this file merged to the default branch
+# first, so pull_request (scoped to this file) is what actually fires
+# pre-merge.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/full-market-3month-pull.yml"
+  workflow_dispatch:
+
+# GitHub evaluates a pull_request path filter against the PR's whole
+# diff versus its base branch, not just the latest push's commits --
+# so as long as this file differs from main (i.e. the whole time this
+# PR is open), *every* push to the branch re-triggers this workflow,
+# regardless of what that push actually touched. That bit run #8: a
+# routine scraper/** code push spawned a second full backfill while
+# run #7 was still mid-flight, both hitting the same shared FinMind
+# quota and racing to resume from/overwrite the same DB artifact.
+# This group serializes runs (queues the new one) instead of letting
+# them run concurrently or auto-cancelling one and losing its progress.
+concurrency:
+  group: full-market-3month-pull
+  cancel-in-progress: false
+
+jobs:
+  full-pull:
+    runs-on: ubuntu-latest
+    # 355, not 360: GitHub's hard per-job cap on standard runners is 6h
+    # (360min) -- leaving a few minutes of margin means the upload
+    # steps (which use if: always()) reliably get to run before that
+    # hard cutoff kills the job outright and skips them.
+    timeout-minutes: 355
+    env:
+      FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+      # 600/hour per the account's documented limit -> 10/min. The
+      # first run used the old default (50/min, meant for the
+      # anonymous tier) and blew through the real budget in under two
+      # minutes, then failed for the remaining ~5+ hours -- this
+      # paces requests to actually match the quota instead of bursting
+      # into it.
+      FINMIND_RPM: "10"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find previous run of this workflow (for resume)
+        id: prev_run
+        # --status success (as opposed to `completed`, which covers
+        # every finished conclusion) missed exactly the case that
+        # matters most: a run that hit the 330-minute job timeout and
+        # got marked `cancelled` still uploads its DB via the
+        # `if: always()` on the upload step, and often has *more*
+        # progress than the last clean `success` run before it. Using
+        # `success` here meant a resume after a timeout would discard
+        # that run's progress and restore from the older, less-complete
+        # DB instead -- caught by inspection before it actually
+        # happened to run 5's restore step, but only just.
+        #
+        # `gh run list`'s default order is by *creation* time, not
+        # completion time -- a real bug this surfaced: run 7 (a normal
+        # multi-hour run, started first) was still in_progress when a
+        # routine code push spawned run 9 (created later, finished in
+        # under a minute after restoring a corrupted DB from a run I'd
+        # cancelled). Sorted by creation time, run 9 would keep
+        # outranking run 7 as "the previous run" even after run 7
+        # finishes with far more real progress, silently discarding
+        # hours of work in favor of a near-empty, broken DB. Sorting by
+        # `updatedAt` (completion time) instead picks whichever run
+        # actually finished most recently, which is what "resume from
+        # the latest state" should mean.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh run list --workflow "full-market-3month-pull.yml" --status completed \
+            --json databaseId,updatedAt --jq 'sort_by(.updatedAt) | reverse | .[0].databaseId' || true)
+          echo "Previous run id: ${RUN_ID:-none}"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous run's database (resume support)
+        if: steps.prev_run.outputs.run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: full-market-3month-db
+          path: scraper/data/
+          run-id: ${{ steps.prev_run.outputs.run_id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true # first-ever run (or artifact expired): fine, just starts fresh
+
+      - name: Verify restored database integrity (discard if corrupt)
+        # A real incident, not a hypothetical: restoring the DB
+        # artifact from a run that was cancelled mid-write (killed
+        # between opening a SQLite transaction and committing it) once
+        # produced a corrupted file that loaded fine but threw
+        # "database disk image is malformed" partway through the run,
+        # crashing after burning real FinMind quota on jobs the
+        # checkpoint never actually recorded. Checking integrity up
+        # front costs a few seconds and turns that failure mode into
+        # "starts fresh" instead of "wastes the whole run".
+        run: |
+          DB=scraper/data/tw_stock_data.db
+          if [ -f "$DB" ]; then
+            RESULT=$(sqlite3 "$DB" "PRAGMA integrity_check;" 2>&1 || echo "integrity_check command failed")
+            if [ "$RESULT" != "ok" ]; then
+              echo "::warning::Restored DB failed integrity check ($RESULT) -- discarding it, this run starts fresh instead of resuming."
+              rm -f "$DB"
+            else
+              echo "Restored DB passed integrity check."
+            fi
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: pip install -r requirements.txt
+
+      - name: FinMind - fetch full TWSE+TPEx ticker universe
+        working-directory: scraper
+        run: python run_batch_download.py stock-list
+
+      - name: FinMind - queue price + chip datasets for every ticker
+        working-directory: scraper
+        # Already-queued (ticker, dataset) pairs from a restored DB
+        # are left untouched by init_checkpoint_jobs -- this only adds
+        # rows for anything genuinely new (e.g. a newly listed ticker).
+        run: >
+          python run_batch_download.py queue --source finmind
+          --datasets price institutional_investors margin_trading
+
+      - name: FinMind - run (targets only what's still pending/errored)
+        working-directory: scraper
+        run: python run_batch_download.py run --source finmind --start-date 2026-06-21
+
+      - name: TWSE/TPEx - market-wide snapshot (real API)
+        working-directory: scraper
+        run: python run_batch_download.py market-wide
+
+      - name: Export
+        # Independently flagged by the data-architecture side's own
+        # incident on a related project (a POC run silently killed by
+        # the execution environment's time limit produced zero output,
+        # because report generation only ran after the download loop
+        # finished): the same gap existed here. This step had no
+        # `if: always()`, so hitting the 355-minute job timeout during
+        # "FinMind - run" would cancel the job before Export ever ran --
+        # the raw DB is still safely preserved via the upload steps
+        # below (also if: always()), but the human/AI-readable JSON/CSV
+        # export and index.json manifest would silently not exist for
+        # that run despite real progress sitting in the DB. Exporting
+        # unconditionally means every run, timed out or not, produces
+        # a usable export from whatever the DB currently holds.
+        if: always()
+        working-directory: scraper
+        run: |
+          python run_batch_download.py export
+          echo "----- checkpoint summary -----"
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from config import CONFIG
+          from core.storage import Storage
+          with Storage(CONFIG.db_path) as s:
+              print(s.checkpoint_summary())
+          "
+
+      - name: Upload exported data as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-market-3month-output
+          path: scraper/data/exports/
+          if-no-files-found: warn
+
+      - name: Upload SQLite DB as artifact (source of truth, for resuming)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-market-3month-db
+          path: scraper/data/tw_stock_data.db
+          if-no-files-found: warn

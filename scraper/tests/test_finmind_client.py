@@ -1,0 +1,136 @@
+"""Unit tests for FinMindClient's record-key derivation logic, using a
+mocked requests.get (no real network) -- covers the newer
+institutional_investors (keyed by date+investor-category name) and
+margin_trading (keyed by plain date) datasets alongside the
+already-long-format statement datasets.
+"""
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import FinMindConfig
+from sources.finmind_client import FinMindApiError, FinMindClient
+
+
+class _FakeResponse:
+    def __init__(self, json_data):
+        self.status_code = 200
+        self._json_data = json_data
+        self.text = ""
+
+    def json(self):
+        return self._json_data
+
+
+class TestFinMindClientKeys(unittest.TestCase):
+    def setUp(self):
+        self.client = FinMindClient(FinMindConfig(requests_per_minute=100000))
+
+    @patch("core.http_client.requests.get")
+    def test_institutional_investors_keyed_by_date_and_name(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [
+                {"date": "2026-09-18", "stock_id": "2330", "name": "Foreign_Investor", "buy": 100, "sell": 50},
+                {"date": "2026-09-18", "stock_id": "2330", "name": "Investment_Trust", "buy": 10, "sell": 5},
+            ],
+        })
+        pairs = self.client.institutional_investors("2330", "2026-06-19")
+        keys = [k for k, _ in pairs]
+        self.assertEqual(keys, ["2026-09-18|Foreign_Investor", "2026-09-18|Investment_Trust"])
+
+    @patch("core.http_client.requests.get")
+    def test_margin_trading_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "MarginPurchaseTodayBalance": 1000}],
+        })
+        pairs = self.client.margin_trading("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
+    def test_shareholding_distribution_keyed_by_date_and_holding_level(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [
+                {"date": "2026-09-18", "stock_id": "2330", "HoldingSharesLevel": "1-999", "people": 100},
+                {"date": "2026-09-18", "stock_id": "2330", "HoldingSharesLevel": "1,000-5,000", "people": 200},
+            ],
+        })
+        pairs = self.client.shareholding_distribution("2330", "2026-06-19")
+        keys = [k for k, _ in pairs]
+        self.assertEqual(keys, ["2026-09-18|1-999", "2026-09-18|1,000-5,000"])
+
+    @patch("core.http_client.requests.get")
+    def test_foreign_holding_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "ForeignInvestmentSharesRatio": 75.5}],
+        })
+        pairs = self.client.foreign_holding("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
+    def test_valuation_ratios_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "PER": 25.3, "dividend_yield": 1.8, "PBR": 8.9}],
+        })
+        pairs = self.client.valuation_ratios("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
+    def test_price_adjusted_keyed_by_plain_date(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "2330", "close": 2460.0}],
+        })
+        pairs = self.client.price_adjusted("2330", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+
+    @patch("core.http_client.requests.get")
+    def test_market_index_uses_index_id_as_data_id(self, mock_get):
+        mock_get.return_value = _FakeResponse({
+            "status": 200, "msg": "ok",
+            "data": [{"date": "2026-09-18", "stock_id": "TAIEX", "price": 46948.72}],
+        })
+        pairs = self.client.market_index("TAIEX", "2026-06-19")
+        self.assertEqual([k for k, _ in pairs], ["2026-09-18"])
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["params"]["data_id"], "TAIEX")
+
+    @patch("core.http_client.requests.get")
+    def test_start_date_is_forwarded_as_query_param(self, mock_get):
+        mock_get.return_value = _FakeResponse({"status": 200, "msg": "ok", "data": []})
+        self.client.price("2330", "2026-06-19")
+        _, kwargs = mock_get.call_args
+        self.assertEqual(kwargs["params"]["start_date"], "2026-06-19")
+        self.assertEqual(kwargs["params"]["data_id"], "2330")
+
+    @patch("core.http_client.requests.get")
+    def test_error_status_with_no_data_raises_instead_of_silently_succeeding(self, mock_get):
+        # This is the shape a quota-exhausted response takes: a normal
+        # 200 HTTP response (so the retry layer doesn't touch it) with
+        # a non-success `status` field and an empty data array.
+        mock_get.return_value = _FakeResponse({"status": 402, "msg": "Data quota exceeded", "data": []})
+        with self.assertRaises(FinMindApiError):
+            self.client.price("2330", "2026-06-19")
+
+    @patch("core.http_client.requests.get")
+    def test_error_status_with_data_present_does_not_raise(self, mock_get):
+        # Lenient path: some non-200 statuses come with usable data
+        # anyway (e.g. a partial-result warning) -- don't discard it.
+        mock_get.return_value = _FakeResponse({
+            "status": 299, "msg": "partial", "data": [{"date": "2026-09-18", "stock_id": "2330"}],
+        })
+        pairs = self.client.price("2330", "2026-06-19")
+        self.assertEqual(len(pairs), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
