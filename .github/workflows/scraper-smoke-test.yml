@@ -117,6 +117,27 @@ jobs:
           echo "----- new dataset verification for 2330: valuation_ratios -----"
           cat data/exports/2330/valuation_ratios.json || echo "(NOT FOUND -- dataset name is wrong or exports/2330 has no such file)"
 
+      - name: TWSE OpenAPI - probe two candidate endpoints (raw, not wired into the client yet)
+        # A research pass (web search only, no direct swagger.json fetch --
+        # that domain is proxy-blocked from a sandbox) triangulated these
+        # two paths from third-party mirrors/wrappers of the real spec,
+        # not from reading it directly: MI_5MINS_HIST for the daily TAIEX
+        # index (despite the "5MINS" name) and TWTB4U for day-trading
+        # stats. Given this project's history of guessed dataset names
+        # turning out wrong (see twse_openapi_client.py's docstring),
+        # this step only curls them raw and prints the response shape --
+        # it deliberately does NOT wire them into ENDPOINTS/FIELD_MAP
+        # until we've seen real field names, so a wrong guess here can't
+        # silently produce garbage records.
+        run: |
+          echo "----- MI_5MINS_HIST (candidate: daily TAIEX index) -----"
+          curl -s "https://openapi.twse.com.tw/v1/indicesReport/MI_5MINS_HIST" | head -c 1500
+          echo
+          echo
+          echo "----- TWTB4U (candidate: day-trading stats) -----"
+          curl -s "https://openapi.twse.com.tw/v1/afterTrading/TWTB4U" | head -c 1500
+          echo
+
       - name: MOPS - robots.txt check only (no data request)
         working-directory: scraper
         run: |
